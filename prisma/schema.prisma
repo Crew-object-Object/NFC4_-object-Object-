@@ -18,6 +18,11 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
+  interviewsAsInterviewer Interview[] @relation("Interviewer")
+  interviewsAsInterviewee Interview[] @relation("Interviewee")
+  fromMessages            Messages[] @relation("FromMessages")
+  toMessages              Messages[] @relation("ToMessages")
+
   @@unique([email])
   @@map("user")
 }
@@ -65,4 +70,72 @@ model Verification {
   updatedAt  DateTime?
 
   @@map("verification")
+}
+
+enum Status {
+  PENDING
+  COMPLETED
+}
+
+model Messages {
+  messageId String   @id @default(cuid())
+  content   String
+  timestamp DateTime @default(now())
+
+  from User @relation("FromMessages", fields: [fromUserId], references: [id])
+  to   User @relation("ToMessages", fields: [toUserId], references: [id])
+
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  fromUserId  String
+  toUserId    String
+
+  @@map("messages")
+}
+
+model Interview {
+  id String @id @default(cuid())
+
+  interviewerId String
+  intervieweeId String
+  interviewer   User   @relation("Interviewer", fields: [interviewerId], references: [id], onDelete: Cascade)
+  interviewee   User   @relation("Interviewee", fields: [intervieweeId], references: [id], onDelete: Cascade)
+
+  problems Problems[]
+
+  startTime            DateTime
+  endTime              DateTime
+  status               Status
+  roomId               String     @default(cuid())
+  interviewTitle       String
+  interviewDescription String
+  interviewScore       Int
+  messages             Messages[]
+
+  @@map("interview")
+}
+
+model Problems {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+  score       Int
+
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  testCases TestCases[]
+
+  @@map("problems")
+}
+
+model TestCases {
+  testCaseId String @id @default(cuid())
+  input      String
+  output     String
+
+  problemId String
+  problem   Problems @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@map("test_cases")
 }
