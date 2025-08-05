@@ -8,7 +8,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	try {
 		const { problemId } = params;
 		const body = await request.json();
-		const { input, output } = body;
+		const { input, output }: { input: string; output: string } = body;
 
 		const session = await auth.api.getSession({
 			headers: request.headers
@@ -69,7 +69,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			data: {
 				input,
 				output,
-				problemId
+				problemId: problemId!
 			}
 		});
 
@@ -110,7 +110,7 @@ export const DELETE: RequestHandler = async ({ request, params }) => {
 
 		// Find the test case and verify access
 		const testCase = await prisma.testCases.findFirst({
-			where: { 
+			where: {
 				testCaseId: testCaseId,
 				problemId: problemId
 			},
