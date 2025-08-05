@@ -20,24 +20,32 @@ You may assume that each input would have exactly one solution, and you may not 
 
 You can return the answer in any order.
 
+Input Format:
+- First line: number of elements in the array
+- Second line: space-separated integers representing the array
+- Third line: target integer
+
 Example:
-Input: nums = [2,7,11,15], target = 9
+Input: 
+4
+2 7 11 15
+9
 Output: [0,1]
 Explanation: Because nums[0] + nums[1] == 9, we return [0, 1].`,
 		difficulty: 'easy',
 		tags: ['array', 'hash table'],
 		testCases: [
 			{
-				input: JSON.stringify({ nums: [2, 7, 11, 15], target: 9 }),
-				output: JSON.stringify([0, 1])
+				input: "4\n2 7 11 15\n9",
+				output: "[0, 1]"
 			},
 			{
-				input: JSON.stringify({ nums: [3, 2, 4], target: 6 }),
-				output: JSON.stringify([1, 2])
+				input: "3\n3 2 4\n6",
+				output: "[1, 2]"
 			},
 			{
-				input: JSON.stringify({ nums: [3, 3], target: 6 }),
-				output: JSON.stringify([0, 1])
+				input: "2\n3 3\n6",
+				output: "[0, 1]"
 			}
 		]
 	},
@@ -45,31 +53,34 @@ Explanation: Because nums[0] + nums[1] == 9, we return [0, 1].`,
 		title: "Reverse Linked List",
 		description: `Given the head of a singly linked list, reverse the list, and return the reversed list.
 
+Input Format:
+- Space-separated integers representing the linked list values (empty line for empty list)
+
 Example:
-Input: head = [1,2,3,4,5]
+Input: 1 2 3 4 5
 Output: [5,4,3,2,1]
 
 Example:
-Input: head = [1,2]
+Input: 1 2
 Output: [2,1]
 
 Example:
-Input: head = []
+Input: (empty line)
 Output: []`,
 		difficulty: 'easy',
 		tags: ['linked list', 'recursion'],
 		testCases: [
 			{
-				input: JSON.stringify([1, 2, 3, 4, 5]),
-				output: JSON.stringify([5, 4, 3, 2, 1])
+				input: "1 2 3 4 5",
+				output: "[5, 4, 3, 2, 1]"
 			},
 			{
-				input: JSON.stringify([1, 2]),
-				output: JSON.stringify([2, 1])
+				input: "1 2",
+				output: "[2, 1]"
 			},
 			{
-				input: JSON.stringify([]),
-				output: JSON.stringify([])
+				input: "",
+				output: "[]"
 			}
 		]
 	},
@@ -82,35 +93,38 @@ An input string is valid if:
 2. Open brackets must be closed in the correct order.
 3. Every close bracket has a corresponding open bracket of the same type.
 
+Input Format:
+- Single line containing the string to validate
+
 Example:
-Input: s = "()"
+Input: ()
 Output: true
 
 Example:
-Input: s = "()[]{}"
+Input: ()[]{}
 Output: true
 
 Example:
-Input: s = "(]"
+Input: (]
 Output: false`,
 		difficulty: 'easy',
 		tags: ['string', 'stack'],
 		testCases: [
 			{
-				input: JSON.stringify("()"),
-				output: JSON.stringify(true)
+				input: "()",
+				output: "true"
 			},
 			{
-				input: JSON.stringify("()[]{}"),
-				output: JSON.stringify(true)
+				input: "()[]{}",
+				output: "true"
 			},
 			{
-				input: JSON.stringify("(]"),
-				output: JSON.stringify(false)
+				input: "(]",
+				output: "false"
 			},
 			{
-				input: JSON.stringify("([)]"),
-				output: JSON.stringify(false)
+				input: "([)]",
+				output: "false"
 			}
 		]
 	},
@@ -133,16 +147,16 @@ Explanation: 2 does not exist in nums so return -1`,
 		tags: ['array', 'binary search'],
 		testCases: [
 			{
-				input: JSON.stringify({ nums: [-1, 0, 3, 5, 9, 12], target: 9 }),
-				output: JSON.stringify(4)
+				input: "6\n-1 0 3 5 9 12\n9",
+				output: "4"
 			},
 			{
-				input: JSON.stringify({ nums: [-1, 0, 3, 5, 9, 12], target: 2 }),
-				output: JSON.stringify(-1)
+				input: "6\n-1 0 3 5 9 12\n2",
+				output: "-1"
 			},
 			{
-				input: JSON.stringify({ nums: [5], target: 5 }),
-				output: JSON.stringify(0)
+				input: "1\n5\n5",
+				output: "0"
 			}
 		]
 	},
@@ -168,16 +182,16 @@ Output: [8,9,9,9,0,0,0,1]`,
 		tags: ['linked list', 'math', 'recursion'],
 		testCases: [
 			{
-				input: JSON.stringify({ l1: [2, 4, 3], l2: [5, 6, 4] }),
-				output: JSON.stringify([7, 0, 8])
+				input: "3\n2 4 3\n3\n5 6 4",
+				output: "[7, 0, 8]"
 			},
 			{
-				input: JSON.stringify({ l1: [0], l2: [0] }),
-				output: JSON.stringify([0])
+				input: "1\n0\n1\n0",
+				output: "[0]"
 			},
 			{
-				input: JSON.stringify({ l1: [9, 9, 9, 9, 9, 9, 9], l2: [9, 9, 9, 9] }),
-				output: JSON.stringify([8, 9, 9, 9, 0, 0, 0, 1])
+				input: "7\n9 9 9 9 9 9 9\n4\n9 9 9 9",
+				output: "[8, 9, 9, 9, 0, 0, 0, 1]"
 			}
 		]
 	},
@@ -204,20 +218,20 @@ Notice that the answer must be a substring, "pwke" is a subsequence and not a su
 		tags: ['hash table', 'string', 'sliding window'],
 		testCases: [
 			{
-				input: JSON.stringify("abcabcbb"),
-				output: JSON.stringify(3)
+				input: "abcabcbb",
+				output: "3"
 			},
 			{
-				input: JSON.stringify("bbbbb"),
-				output: JSON.stringify(1)
+				input: "bbbbb",
+				output: "1"
 			},
 			{
-				input: JSON.stringify("pwwkew"),
-				output: JSON.stringify(3)
+				input: "pwwkew",
+				output: "3"
 			},
 			{
-				input: JSON.stringify(""),
-				output: JSON.stringify(0)
+				input: "",
+				output: "0"
 			}
 		]
 	},
@@ -243,16 +257,16 @@ Output: 1`,
 		tags: ['array', 'two pointers', 'greedy'],
 		testCases: [
 			{
-				input: JSON.stringify([1, 8, 6, 2, 5, 4, 8, 3, 7]),
-				output: JSON.stringify(49)
+				input: "9\n1 8 6 2 5 4 8 3 7",
+				output: "49"
 			},
 			{
-				input: JSON.stringify([1, 1]),
-				output: JSON.stringify(1)
+				input: "2\n1 1",
+				output: "1"
 			},
 			{
-				input: JSON.stringify([4, 3, 2, 1, 4]),
-				output: JSON.stringify(16)
+				input: "5\n4 3 2 1 4",
+				output: "16"
 			}
 		]
 	},
@@ -285,16 +299,16 @@ Output: []`,
 		tags: ['linked list', 'divide and conquer', 'heap', 'merge sort'],
 		testCases: [
 			{
-				input: JSON.stringify([[1, 4, 5], [1, 3, 4], [2, 6]]),
-				output: JSON.stringify([1, 1, 2, 3, 4, 4, 5, 6])
+				input: "3\n3\n1 4 5\n3\n1 3 4\n2\n2 6",
+				output: "[1, 1, 2, 3, 4, 4, 5, 6]"
 			},
 			{
-				input: JSON.stringify([]),
-				output: JSON.stringify([])
+				input: "0",
+				output: "[]"
 			},
 			{
-				input: JSON.stringify([[]]),
-				output: JSON.stringify([])
+				input: "1\n0",
+				output: "[]"
 			}
 		]
 	},
@@ -317,16 +331,16 @@ Explanation: merged array = [1,2,3,4] and median is (2 + 3) / 2 = 2.5.`,
 		tags: ['array', 'binary search', 'divide and conquer'],
 		testCases: [
 			{
-				input: JSON.stringify({ nums1: [1, 3], nums2: [2] }),
-				output: JSON.stringify(2.0)
+				input: "2\n1 3\n1\n2",
+				output: "2.0"
 			},
 			{
-				input: JSON.stringify({ nums1: [1, 2], nums2: [3, 4] }),
-				output: JSON.stringify(2.5)
+				input: "2\n1 2\n2\n3 4",
+				output: "2.5"
 			},
 			{
-				input: JSON.stringify({ nums1: [0, 0], nums2: [0, 0] }),
-				output: JSON.stringify(0.0)
+				input: "2\n0 0\n2\n0 0",
+				output: "0.0"
 			}
 		]
 	},
@@ -357,20 +371,20 @@ Explanation: ".*" means "zero or more (*) of any character (.)".`,
 		tags: ['string', 'dynamic programming', 'recursion'],
 		testCases: [
 			{
-				input: JSON.stringify({ s: "aa", p: "a" }),
-				output: JSON.stringify(false)
+				input: "aa\na",
+				output: "false"
 			},
 			{
-				input: JSON.stringify({ s: "aa", p: "a*" }),
-				output: JSON.stringify(true)
+				input: "aa\na*",
+				output: "true"
 			},
 			{
-				input: JSON.stringify({ s: "ab", p: ".*" }),
-				output: JSON.stringify(true)
+				input: "ab\n.*",
+				output: "true"
 			},
 			{
-				input: JSON.stringify({ s: "aab", p: "c*a*b" }),
-				output: JSON.stringify(true)
+				input: "aab\nc*a*b",
+				output: "true"
 			}
 		]
 	}

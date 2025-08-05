@@ -41,6 +41,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 
 		const result = await output.json();
+		console.log(result)
 		return json(result);
 	} catch (error) {
 		console.error('API Error:', error);

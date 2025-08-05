@@ -14,13 +14,23 @@
 	import { common, createLowlight } from 'lowlight';
 	import * as Y from 'yjs';
 	import TiptapCollabProvider from '@tiptap-pro/provider';
-	// import jsonwebtoken from 'jsonwebtoken';
 	import { authClient } from '../auth-client';
 	import { PencilIcon } from 'lucide-svelte';
+
+	// Props
+	interface Props {
+		roomId?: string;
+		onContentChange?: (content: string) => void;
+	}
+	
+	let { roomId = 'default', onContentChange }: Props = $props();
 
 	let element: HTMLDivElement;
 	let editor = $state<Editor | null>(null);
 	let data = authClient.useSession();
+	let provider = $state<TiptapCollabProvider | null>(null);
+	let currentRoomId = $state<string | null>(null);
+	let isSettingUpCollaboration = $state(false);
 	const doc = new Y.Doc();
 	const lowlight = createLowlight(common);
 
@@ -51,6 +61,32 @@
 		{ value: 'c', label: 'C' }
 	];
 
+	// Function to get the text content from the editor
+	function getTextContent(): string {
+		if (!editor) return '';
+		return editor.getText();
+	}
+
+	// Function to get only code block content
+	function getCodeContent(): string {
+		if (!editor) return '';
+		
+		const doc = editor.state.doc;
+		let codeContent = '';
+		
+		doc.descendants((node) => {
+			if (node.type.name === 'codeBlock') {
+				codeContent += node.textContent;
+				if (codeContent && !codeContent.endsWith('\n')) {
+					codeContent += '\n';
+				}
+			}
+			return true;
+		});
+		
+		return codeContent.trim();
+	}
+
 	onMount(() => {
 		editor = new Editor({
 			element: element,
@@ -71,11 +107,20 @@
 				const currentEditor = editor;
 				editor = null;
 				editor = currentEditor;
+				
+				// Call the content change callback with code content
+				if (onContentChange) {
+					const codeContent = getCodeContent();
+					onContentChange(codeContent);
+				}
 			}
 		});
 	});
 
 	onDestroy(() => {
+		if (provider) {
+			provider.destroy();
+		}
 		if (editor) {
 			editor.destroy();
 		}
@@ -106,21 +151,102 @@
 	});
 
 	$effect(() => {
-		if (!$data.data) return;
-		const provider = new TiptapCollabProvider({
-			name: 'document.name',
-			appId: 'jkvv46ek',
-			token: 'notoken',
-			document: doc
-		});
+		const sessionData = $data.data;
+		
+		// Only setup collaboration if we have session data, a roomId, and it's different from current
+		if (!sessionData || !roomId || roomId === currentRoomId || isSettingUpCollaboration) {
+			return;
+		}
+		
+		console.log('Setting up collaboration for room:', roomId);
+		isSettingUpCollaboration = true;
+		
+		// Clean up existing provider
+		if (provider) {
+			provider.destroy();
+			provider = null;
+		}
+		
+		async function setupCollaboration() {
+			try {
+				// Try to generate TipTap token from server
+				const response = await fetch('/api/tiptap-token', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ roomId })
+				});
+				
+				if (!response.ok) {
+					throw new Error('Failed to get token');
+				}
+				
+				const { token } = await response.json();
+				
+				if (!token) {
+					throw new Error('No token received');
+				}
+				
+				// Create new provider with room-specific name and proper token
+				const newProvider = new TiptapCollabProvider({
+					name: `room-${roomId}`,
+					appId: 'jkvv46ek',
+					token: token,
+					document: doc
+				});
+				
+				// Only set provider if we're still working with the same room
+				if (roomId === currentRoomId) {
+					provider = newProvider;
+					console.log('Collaboration provider created with authentication for room:', roomId);
+				} else {
+					// Room changed while we were setting up, destroy the provider
+					newProvider.destroy();
+				}
+			} catch (error) {
+				console.warn('Failed to set up authenticated collaboration, falling back to basic mode:', error);
+				
+				// Fallback: create provider without authentication (for development)
+				const newProvider = new TiptapCollabProvider({
+					name: `room-${roomId}`,
+					appId: 'jkvv46ek', 
+					token: `fallback-${roomId}-${Date.now()}`, // Use a unique fallback token
+					document: doc
+				});
+				
+				// Only set provider if we're still working with the same room
+				if (roomId === currentRoomId) {
+					provider = newProvider;
+					console.log('Collaboration provider created in fallback mode for room:', roomId);
+				} else {
+					// Room changed while we were setting up, destroy the provider
+					newProvider.destroy();
+				}
+			} finally {
+				isSettingUpCollaboration = false;
+			}
+		}
+		
+		// Update current room and setup collaboration
+		currentRoomId = roomId;
+		setupCollaboration();
+		
+		// Cleanup function
+		return () => {
+			if (provider && currentRoomId === roomId) {
+				provider.destroy();
+				provider = null;
+			}
+		};
 	});
 </script>
 
 {#if editor}
 	<div class="mb-2 flex items-center gap-1">
 		<!-- Code Block Toggle -->
-		<div class="flex items-center gap-1 w-full">
-			<p class="grow flex items-center gap-2 text-sm font-semibold">
+		<div class="flex w-full items-center gap-1">
+			<p class="flex grow items-center gap-2 text-sm font-semibold">
 				<PencilIcon size={12} />
 				Code Editor
 			</p>
@@ -191,7 +317,8 @@
 <div
 	bind:this={element}
 	class="prose min-h-64 max-w-none rounded-md border p-4 py-0 dark:prose-invert [&_.ProseMirror]:m-0 [&_.ProseMirror]:border-none [&_.ProseMirror]:p-0 [&_.ProseMirror]:outline-none"
-></div>
+>
+</div>
 
 <style lang="postcss">
 	:global(.ProseMirror) {

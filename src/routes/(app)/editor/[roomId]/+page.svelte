@@ -1,18 +1,15 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
-	import { useSession } from '$lib/auth-client';
-	import Tiptap from '$lib/components/tiptap.svelte';
 	import VideoCall from '$lib/components/video-call.svelte';
+	import TiptapEditor from '$lib/components/tiptap.svelte';
+	import InterviewChat from '$lib/components/interview-chat.svelte';
 	import { Pane, PaneGroup, PaneResizer } from 'paneforge';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
 	import GripHorizontalIcon from '@lucide/svelte/icons/grip-horizontal';
-	import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
 	import FlaskConicalIcon from '@lucide/svelte/icons/flask-conical';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import PlusIcon from '@lucide/svelte/icons/plus';
-
-	import SendIcon from '@lucide/svelte/icons/send';
 	import CodeIcon from '@lucide/svelte/icons/code';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -22,19 +19,6 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import type { Problem } from '$lib/problemset';
-
-	const session = useSession();
-
-	interface Message {
-		messageId: string;
-		content: string;
-		timestamp: string;
-		from: {
-			id: string;
-			name: string;
-			image?: string;
-		};
-	}
 
 	interface InterviewProblem {
 		id: string;
@@ -47,14 +31,6 @@
 			output: string;
 		}[];
 	}
-
-	// Chat state
-	let messages: Message[] = [];
-	let newMessage = '';
-	let chatContainer: HTMLDivElement;
-	let isLoading = false;
-	let pollingInterval: NodeJS.Timeout | null = null;
-	let lastMessageCount = 0;
 
 	// Problem management state
 	let availableProblems: Problem[] = [];
@@ -71,127 +47,6 @@
 
 	// Get room ID from URL
 	$: roomId = $page.params.roomId;
-
-	// Fetch messages from API
-	const fetchMessages = async () => {
-		if (!roomId) return;
-
-		try {
-			const response = await fetch(`/api/messages/${roomId}`);
-			const result = await response.json();
-
-			if (result.success) {
-				messages = result.data;
-				// Auto-scroll to bottom if new messages arrived
-				if (messages.length > lastMessageCount) {
-					setTimeout(scrollToBottom, 100);
-					lastMessageCount = messages.length;
-				}
-			} else {
-				console.error('Failed to fetch messages:', result.error);
-			}
-		} catch (error) {
-			console.error('Error fetching messages:', error);
-		}
-	};
-
-	// Send a new message
-	const sendMessage = async () => {
-		if (!newMessage.trim() || isLoading || !roomId) return;
-
-		const messageContent = newMessage.trim();
-		newMessage = '';
-		isLoading = true;
-
-		try {
-			const response = await fetch(`/api/messages/${roomId}`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					content: messageContent
-				})
-			});
-
-			const result = await response.json();
-
-			if (result.success) {
-				// Immediately fetch latest messages to update UI
-				await fetchMessages();
-			} else {
-				console.error('Failed to send message:', result.error);
-				// Restore message on failure
-				newMessage = messageContent;
-			}
-		} catch (error) {
-			console.error('Error sending message:', error);
-			// Restore message on failure
-			newMessage = messageContent;
-		} finally {
-			isLoading = false;
-		}
-	};
-
-	// Handle Enter key press
-	const handleKeyPress = (event: KeyboardEvent) => {
-		if (event.key === 'Enter' && !event.shiftKey) {
-			event.preventDefault();
-			sendMessage();
-		}
-	};
-
-	// Scroll to bottom of chat
-	const scrollToBottom = () => {
-		if (chatContainer) {
-			chatContainer.scrollTop = chatContainer.scrollHeight;
-		}
-	};
-
-	// Format timestamp
-	const formatTime = (timestamp: string) => {
-		const date = new Date(timestamp);
-		const now = new Date();
-		const diffMs = now.getTime() - date.getTime();
-		const diffMins = Math.floor(diffMs / (1000 * 60));
-
-		if (diffMins < 1) return 'Just now';
-		if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
-
-		const diffHours = Math.floor(diffMins / 60);
-		if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-
-		return date.toLocaleDateString();
-	};
-
-	// Get user initials for avatar
-	const getInitials = (name: string) => {
-		return (
-			name
-				?.split(' ')
-				.map((word: string) => word[0])
-				.join('')
-				.toUpperCase()
-				.slice(0, 2) || '?'
-		);
-	};
-
-	// Start polling for new messages
-	const startPolling = () => {
-		// Initial fetch
-		fetchMessages();
-
-		// Poll every 500 milliseconds
-		pollingInterval = setInterval(fetchMessages, 500);
-	};
-
-	// Stop polling
-	const stopPolling = () => {
-		if (pollingInterval) {
-			clearInterval(pollingInterval);
-			pollingInterval = null;
-		}
-	};
 
 	// Fetch available problems from problemset
 	const fetchAvailableProblems = async () => {
@@ -354,6 +209,11 @@
 	let executionResults: any[] = [];
 	let showSubmissionDialog = false;
 
+	// Function to handle code content changes from TiptapEditor
+	const handleCodeChange = (code: string) => {
+		currentCode = code;
+	};
+
 	// Submit code for execution
 	const submitCode = async () => {
 		if (!selectedProblemForSubmission || !currentCode.trim() || isExecuting) return;
@@ -376,12 +236,14 @@
 						},
 						body: JSON.stringify({
 							code: currentCode,
-							language_id: '71', // Python 3
+							language_id: '10', // Python 3
 							input: testCase.input
 						})
 					});
 					
 					const result = await response.json();
+
+					console.log(result)
 					
 					// Compare output with expected
 					const actualOutput = result.stdout?.trim() || '';
@@ -437,7 +299,6 @@
 
 	onMount(() => {
 		if (roomId) {
-			startPolling();
 			fetchInterviewProblems();
 			if (isInterviewer()) {
 				fetchAvailableProblems();
@@ -446,7 +307,7 @@
 	});
 
 	onDestroy(() => {
-		stopPolling();
+		// Cleanup handled by individual components
 	});
 </script>
 
@@ -480,12 +341,7 @@
 								{/if}
 							</div>
 							<div class="flex-1 p-4">
-								<Textarea
-									bind:value={currentCode}
-									placeholder="Write your code here..."
-									class="h-full resize-none font-mono text-sm"
-									rows={20}
-								/>
+								<TiptapEditor roomId={$page.params.roomId} onContentChange={handleCodeChange} />
 							</div>
 						</div>
 					</Pane>
@@ -640,77 +496,9 @@
 
 					<!-- Chat Section -->
 					<Pane defaultSize={50} minSize={25}>
-						<div class="flex h-full flex-col bg-background">
-							<div class="flex items-center gap-2 border-b px-4 py-2">
-								<MessageCircleIcon size={16} />
-								<h3 class="text-sm font-medium">Chat</h3>
-								<span class="text-xs text-muted-foreground">({messages.length})</span>
-							</div>
-							<div class="flex-1 overflow-y-auto p-4" bind:this={chatContainer}>
-								{#if messages.length === 0}
-									<div class="py-8 text-center text-sm text-muted-foreground">
-										<MessageCircleIcon size={32} class="mx-auto mb-2 opacity-50" />
-										<p>No messages yet. Start the conversation!</p>
-									</div>
-								{:else}
-									<div class="space-y-3">
-										{#each messages as message (message.messageId)}
-											<div class="flex items-start space-x-2">
-												<div
-													class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
-												>
-													{getInitials(message.from.name)}
-												</div>
-												<div class="min-w-0 flex-1">
-													<div class="rounded-lg bg-muted p-3">
-														<p class="text-sm break-words">{message.content}</p>
-													</div>
-													<div class="mt-1 flex items-center gap-2">
-														<p class="text-xs text-muted-foreground">{message.from.name}</p>
-														<span class="text-xs text-muted-foreground">•</span>
-														<p class="text-xs text-muted-foreground">
-															{formatTime(message.timestamp)}
-														</p>
-													</div>
-												</div>
-											</div>
-										{/each}
-									</div>
-								{/if}
-							</div>
-							<div class="border-t p-4">
-								<form
-									onsubmit={(e) => {
-										e.preventDefault();
-										sendMessage();
-									}}
-									class="flex space-x-2"
-								>
-									<input
-										type="text"
-										placeholder="Type a message..."
-										class="flex-1 rounded-md border border-input px-3 py-2 text-sm focus:ring-2 focus:ring-ring focus:outline-none disabled:opacity-50"
-										bind:value={newMessage}
-										onkeypress={handleKeyPress}
-										disabled={isLoading}
-									/>
-									<button
-										type="submit"
-										class="flex items-center gap-1 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-										disabled={isLoading || !newMessage.trim()}
-									>
-										{#if isLoading}
-											<div
-												class="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
-											></div>
-										{:else}
-											<SendIcon size={14} />
-										{/if}
-										Send
-									</button>
-								</form>
-							</div>
-						</div>
+						{#if roomId}
+							<InterviewChat {roomId} />
+						{/if}
 					</Pane>
 				</PaneGroup>
 			</Pane>
