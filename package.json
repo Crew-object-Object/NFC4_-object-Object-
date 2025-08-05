@@ -1,18 +1,24 @@
 {
-	"name": "code-tantra",
 	"private": true,
-	"version": "0.0.1",
 	"type": "module",
+	"version": "1.0.0",
+	"name": "codecollab",
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
+		"format": "prettier --write .",
 		"prepare": "svelte-kit sync || echo ''",
+		"lint": "prettier --check . && eslint .",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+<<<<<<< Updated upstream
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"format": "prettier --write .",
 		"lint": "prettier --check . && eslint .",
 		"postinstall": "prisma generate"
+=======
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+>>>>>>> Stashed changes
 	},
 	"devDependencies": {
 		"@dnd-kit-svelte/core": "^0.0.8",
