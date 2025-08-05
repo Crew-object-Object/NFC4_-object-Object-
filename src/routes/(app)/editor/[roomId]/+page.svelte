@@ -288,6 +288,54 @@
 					});
 				}
 			}
+
+			// Calculate score based on passed test cases
+			const passedTestCases = executionResults.filter(result => result.passed).length;
+			const totalTestCases = executionResults.length;
+			const score = passedTestCases; // Score is the number of passed test cases
+
+			// Update the problem score in the database
+			try {
+				const response = await fetch(`/api/problems/${selectedProblemForSubmission.id}/score`, {
+					method: 'PATCH',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+						score: score,
+						totalTestCases: totalTestCases,
+						passedTestCases: passedTestCases
+					})
+				});
+
+				const result = await response.json();
+
+				if (result.success) {
+					// Update the local problem score
+					interviewProblems = interviewProblems.map(problem => {
+						if (problem.id === selectedProblemForSubmission.id) {
+							return {
+								...problem,
+								score: score
+							};
+						}
+						return problem;
+					});
+
+					console.log(`Problem score updated: ${passedTestCases}/${totalTestCases} test cases passed`);
+
+					// Send notification about score update
+					if (sseClient.isConnected) {
+						const userName = $session.data?.user?.name || 'Interviewee';
+						const message = `📊 ${userName} submitted solution for "${selectedProblemForSubmission.title}" - Score: ${passedTestCases}/${totalTestCases} test cases passed`;
+						await sseClient.sendMessage(message);
+					}
+				} else {
+					console.error('Failed to update problem score:', result.error);
+				}
+			} catch (error) {
+				console.error('Error updating problem score:', error);
+			}
 		} catch (error) {
 			console.error('Error during code submission:', error);
 		} finally {
@@ -1087,7 +1135,17 @@
 											<div class="rounded-lg border p-3">
 												<div class="mb-2 flex items-start justify-between">
 													<div class="flex-1">
-														<h4 class="text-sm font-semibold">{problem.title}</h4>
+														<div class="flex items-center gap-2">
+															<h4 class="text-sm font-semibold">{problem.title}</h4>
+															{#if problem.score > 0 || isInterviewee}
+																<Badge 
+																	variant={problem.score === problem.testCases.length ? 'default' : problem.score > 0 ? 'secondary' : 'outline'}
+																	class="text-xs"
+																>
+																	Score: {problem.score}/{problem.testCases.length}
+																</Badge>
+															{/if}
+														</div>
 														<p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
 															{problem.description}
 														</p>
@@ -1247,7 +1305,7 @@
 					<Select.Content>
 						{#each interviewProblems as problem}
 							<Select.Item value={problem.id}>
-								{problem.title} ({problem.testCases.length} test cases)
+								{problem.title} ({problem.testCases.length} test cases) - Score: {problem.score}/{problem.testCases.length}
 							</Select.Item>
 						{/each}
 					</Select.Content>
