@@ -7,14 +7,23 @@
 	import BoldIcon from '@lucide/svelte/icons/bold';
 	import ItalicIcon from '@lucide/svelte/icons/italic';
 	import StrikethroughIcon from '@lucide/svelte/icons/strikethrough';
+	import Collaboration from '@tiptap/extension-collaboration';
+	import * as Y from 'yjs';
 
 	let element: HTMLDivElement;
 	let editor = $state<Editor | null>(null);
 
+	const doc = new Y.Doc();
+	
 	onMount(() => {
 		editor = new Editor({
 			element: element,
-			extensions: [StarterKit],
+			extensions: [
+				StarterKit,
+				Collaboration.configure({
+					document: doc // Configure Y.Doc for collaboration
+				})
+			],
 			content: '<p>Hello World! 🌍️ </p>',
 			onTransaction: () => {
 				const currentEditor = editor;
@@ -40,7 +49,7 @@
 </script>
 
 {#if editor}
-	<div class="flex items-center gap-1 border-b border-border p-2">
+	<div class="flex items-center gap-1 p-2">
 		<!-- Text Format Toggles -->
 		<div class="flex items-center gap-1">
 			<Toggle
