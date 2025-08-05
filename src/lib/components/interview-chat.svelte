@@ -135,6 +135,11 @@
 		// Add new message to the list
 		messages = [...messages, message];
 		setTimeout(scrollToBottom, 100);
+		
+		// Log system alerts for debugging
+		if (message.content.includes('SYSTEM ALERT')) {
+			console.log('System alert message received:', message.content);
+		}
 	};
 
 	const handleSSEError = (error: string) => {
@@ -214,49 +219,73 @@
 			<div class="space-y-4">
 				{#each messages as message (message.messageId)}
 					{@const isCurrentUser = currentUser?.id === message.from.id}
-					<div class="flex {isCurrentUser ? 'justify-end' : 'justify-start'}">
-						<div
-							class="flex items-start space-x-2 max-w-[70%] {isCurrentUser
-								? 'flex-row-reverse space-x-reverse'
-								: ''}"
-						>
-							<!-- User Avatar -->
-							<div class="flex-shrink-0">
-								<Avatar.Root class="h-8 w-8 ring-2 ring-white dark:ring-gray-800">
-									<Avatar.Image 
-										src={message.from.image} 
-										alt={message.from.name}
-										class="object-cover"
-									/>
-									<Avatar.Fallback class="bg-primary text-primary-foreground text-xs font-semibold">
-										{getInitials(message.from.name)}
-									</Avatar.Fallback>
-								</Avatar.Root>
-							</div>
-
-							<!-- Message Content -->
-							<div class="flex flex-col {isCurrentUser ? 'items-end' : 'items-start'}">
-								<div
-									class="rounded-2xl px-4 py-2 max-w-fit {isCurrentUser
-										? 'bg-primary text-primary-foreground'
-										: 'bg-muted text-muted-foreground'}"
-								>
-									<p class="text-sm break-words">{message.content}</p>
-								</div>
-								<div
-									class="mt-1 flex items-center gap-2 {isCurrentUser
-										? 'justify-end'
-										: 'justify-start'}"
-								>
-									<p class="text-xs text-muted-foreground">{message.from.name}</p>
-									<span class="text-xs text-muted-foreground">•</span>
-									<p class="text-xs text-muted-foreground">
-										{formatTime(message.timestamp)}
+					{@const isSystemAlert = message.content.includes('SYSTEM ALERT')}
+					
+					{#if isSystemAlert}
+						<!-- System Alert Message - Full Width -->
+						<div class="w-full">
+							<div class="mx-auto max-w-fit rounded-lg border-2 border-orange-200 bg-orange-50 px-4 py-3 dark:border-orange-800 dark:bg-orange-950">
+								<div class="flex items-center gap-2">
+									<div class="text-orange-600 dark:text-orange-400">
+										🚨
+									</div>
+									<p class="text-sm font-medium text-orange-800 dark:text-orange-200">
+										{message.content}
 									</p>
+								</div>
+								<div class="mt-1 text-center">
+									<span class="text-xs text-orange-600 dark:text-orange-400">
+										{formatTime(message.timestamp)}
+									</span>
 								</div>
 							</div>
 						</div>
-					</div>
+					{:else}
+						<!-- Regular Chat Message -->
+						<div class="flex {isCurrentUser ? 'justify-end' : 'justify-start'}">
+							<div
+								class="flex items-start space-x-2 max-w-[70%] {isCurrentUser
+									? 'flex-row-reverse space-x-reverse'
+									: ''}"
+							>
+								<!-- User Avatar -->
+								<div class="flex-shrink-0">
+									<Avatar.Root class="h-8 w-8 ring-2 ring-white dark:ring-gray-800">
+										<Avatar.Image 
+											src={message.from.image} 
+											alt={message.from.name}
+											class="object-cover"
+										/>
+										<Avatar.Fallback class="bg-primary text-primary-foreground text-xs font-semibold">
+											{getInitials(message.from.name)}
+										</Avatar.Fallback>
+									</Avatar.Root>
+								</div>
+
+								<!-- Message Content -->
+								<div class="flex flex-col {isCurrentUser ? 'items-end' : 'items-start'}">
+									<div
+										class="rounded-2xl px-4 py-2 max-w-fit {isCurrentUser
+											? 'bg-primary text-primary-foreground'
+											: 'bg-muted text-muted-foreground'}"
+									>
+										<p class="text-sm break-words">{message.content}</p>
+									</div>
+									<div
+										class="mt-1 flex items-center gap-2 {isCurrentUser
+											? 'justify-end'
+											: 'justify-start'}"
+									>
+										<p class="text-xs text-muted-foreground">{message.from.name}</p>
+										<span class="text-xs text-muted-foreground">•</span>
+										<p class="text-xs text-muted-foreground">
+											{formatTime(message.timestamp)}
+										</p>
+									</div>
+								</div>
+							</div>
+						</div>
+					{/if}
 				{/each}
 			</div>
 		{/if}
