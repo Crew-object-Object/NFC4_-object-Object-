@@ -2,8 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { useSession } from '$lib/auth-client';
-	import Tiptap from '$lib/components/tiptap.svelte';
 	import VideoCall from '$lib/components/video-call.svelte';
+	import { sseClient, type ChatMessage } from '$lib/sse-client';
 	import { Pane, PaneGroup, PaneResizer } from 'paneforge';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
 	import GripHorizontalIcon from '@lucide/svelte/icons/grip-horizontal';
@@ -53,8 +53,8 @@
 	let newMessage = '';
 	let chatContainer: HTMLDivElement;
 	let isLoading = false;
-	let pollingInterval: NodeJS.Timeout | null = null;
-	let lastMessageCount = 0;
+	let sseConnected = false;
+	let connectionError = '';
 
 	// Problem management state
 	let availableProblems: Problem[] = [];
@@ -72,7 +72,25 @@
 	// Get room ID from URL
 	$: roomId = $page.params.roomId;
 
-	// Fetch messages from API
+	// Initialize SSE connection
+	const initializeSSE = async () => {
+		if (!roomId) return;
+
+		try {
+			await sseClient.connect(roomId);
+			sseConnected = true;
+			connectionError = '';
+			
+			// Load initial messages
+			await fetchMessages();
+		} catch (error) {
+			console.error('Failed to connect SSE:', error);
+			connectionError = 'Failed to connect to chat';
+			sseConnected = false;
+		}
+	};
+
+	// Fetch initial messages from API (for when page loads)
 	const fetchMessages = async () => {
 		if (!roomId) return;
 
@@ -82,11 +100,7 @@
 
 			if (result.success) {
 				messages = result.data;
-				// Auto-scroll to bottom if new messages arrived
-				if (messages.length > lastMessageCount) {
-					setTimeout(scrollToBottom, 100);
-					lastMessageCount = messages.length;
-				}
+				setTimeout(scrollToBottom, 100);
 			} else {
 				console.error('Failed to fetch messages:', result.error);
 			}
@@ -97,33 +111,15 @@
 
 	// Send a new message
 	const sendMessage = async () => {
-		if (!newMessage.trim() || isLoading || !roomId) return;
+		if (!newMessage.trim() || isLoading || !roomId || !sseConnected) return;
 
 		const messageContent = newMessage.trim();
 		newMessage = '';
 		isLoading = true;
 
 		try {
-			const response = await fetch(`/api/messages/${roomId}`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					content: messageContent
-				})
-			});
-
-			const result = await response.json();
-
-			if (result.success) {
-				// Immediately fetch latest messages to update UI
-				await fetchMessages();
-			} else {
-				console.error('Failed to send message:', result.error);
-				// Restore message on failure
-				newMessage = messageContent;
-			}
+			// Send via SSE client
+			await sseClient.sendMessage(messageContent);
 		} catch (error) {
 			console.error('Error sending message:', error);
 			// Restore message on failure
@@ -176,21 +172,28 @@
 		);
 	};
 
-	// Start polling for new messages
-	const startPolling = () => {
-		// Initial fetch
-		fetchMessages();
-
-		// Poll every 500 milliseconds
-		pollingInterval = setInterval(fetchMessages, 500);
+	// SSE event handlers
+	const handleNewMessage = (message: ChatMessage) => {
+		// Add new message to the list
+		messages = [...messages, message];
+		setTimeout(scrollToBottom, 100);
 	};
 
-	// Stop polling
-	const stopPolling = () => {
-		if (pollingInterval) {
-			clearInterval(pollingInterval);
-			pollingInterval = null;
-		}
+	const handleSSEError = (error: string) => {
+		console.error('SSE error:', error);
+		connectionError = error;
+		sseConnected = false;
+	};
+
+	const handleSSEConnect = () => {
+		sseConnected = true;
+		connectionError = '';
+		console.log('SSE connected');
+	};
+
+	const handleSSEDisconnect = () => {
+		sseConnected = false;
+		console.log('SSE disconnected');
 	};
 
 	// Fetch available problems from problemset
@@ -437,16 +440,32 @@
 
 	onMount(() => {
 		if (roomId) {
-			startPolling();
+			// Initialize SSE connection
+			initializeSSE();
+			
+			// Set up event handlers
+			const unsubscribeMessage = sseClient.onMessage(handleNewMessage);
+			const unsubscribeError = sseClient.onError(handleSSEError);
+			const unsubscribeConnect = sseClient.onConnect(handleSSEConnect);
+			const unsubscribeDisconnect = sseClient.onDisconnect(handleSSEDisconnect);
+			
 			fetchInterviewProblems();
 			if (isInterviewer()) {
 				fetchAvailableProblems();
 			}
+			
+			// Cleanup function
+			return () => {
+				unsubscribeMessage();
+				unsubscribeError();
+				unsubscribeConnect();
+				unsubscribeDisconnect();
+			};
 		}
 	});
 
 	onDestroy(() => {
-		stopPolling();
+		sseClient.disconnect();
 	});
 </script>
 
@@ -645,6 +664,23 @@
 								<MessageCircleIcon size={16} />
 								<h3 class="text-sm font-medium">Chat</h3>
 								<span class="text-xs text-muted-foreground">({messages.length})</span>
+								
+								<!-- Connection Status -->
+								<div class="ml-auto flex items-center gap-2">
+									{#if sseConnected}
+										<div class="flex items-center gap-1">
+											<div class="h-2 w-2 rounded-full bg-green-500"></div>
+											<span class="text-xs text-green-600">Connected</span>
+										</div>
+									{:else}
+										<div class="flex items-center gap-1">
+											<div class="h-2 w-2 rounded-full bg-red-500"></div>
+											<span class="text-xs text-red-600">
+												{connectionError || 'Disconnected'}
+											</span>
+										</div>
+									{/if}
+								</div>
 							</div>
 							<div class="flex-1 overflow-y-auto p-4" bind:this={chatContainer}>
 								{#if messages.length === 0}
@@ -688,16 +724,16 @@
 								>
 									<input
 										type="text"
-										placeholder="Type a message..."
+										placeholder={sseConnected ? "Type a message..." : "Connecting..."}
 										class="flex-1 rounded-md border border-input px-3 py-2 text-sm focus:ring-2 focus:ring-ring focus:outline-none disabled:opacity-50"
 										bind:value={newMessage}
 										onkeypress={handleKeyPress}
-										disabled={isLoading}
+										disabled={isLoading || !sseConnected}
 									/>
 									<button
 										type="submit"
 										class="flex items-center gap-1 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-										disabled={isLoading || !newMessage.trim()}
+										disabled={isLoading || !newMessage.trim() || !sseConnected}
 									>
 										{#if isLoading}
 											<div

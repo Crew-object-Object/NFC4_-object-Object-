@@ -2,6 +2,7 @@ import { auth } from '$lib/auth';
 import prisma from '$lib/prisma';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
+import { broadcastToRoom } from '$lib/sse-manager';
 
 // GET /api/messages/[roomId] - Get messages for a room
 export const GET: RequestHandler = async ({ request, params }) => {
@@ -162,6 +163,23 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				}
 			}
 		});
+
+		// Broadcast to SSE clients
+		if (roomId) {
+			broadcastToRoom(roomId, {
+				type: 'message',
+				data: {
+					messageId: message.messageId,
+					content: message.content,
+					timestamp: message.timestamp.toISOString(),
+					from: {
+						id: message.from.id,
+						name: message.from.name,
+						image: message.from.image || undefined
+					}
+				}
+			});
+		}
 
 		return json({
 			success: true,
