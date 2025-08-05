@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import VideoCall from '$lib/components/video-call.svelte';
 	import TiptapEditor from '$lib/components/tiptap.svelte';
 	import InterviewChat from '$lib/components/interview-chat.svelte';
+	import AddProblemDialog from '$lib/components/add-problem-dialog.svelte';
+	import AddTestCaseDialog from '$lib/components/add-test-case-dialog.svelte';
 	import { Pane, PaneGroup, PaneResizer } from 'paneforge';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
 	import GripHorizontalIcon from '@lucide/svelte/icons/grip-horizontal';
@@ -22,6 +23,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { Problem } from '$lib/problemset';
 	import { browser } from '$app/environment';
+	import { authClient, useSession } from '$lib/auth-client';
 
 	interface InterviewProblem {
 		id: string;
@@ -36,20 +38,15 @@
 	}
 
 	// Problem management state
-	let availableProblems: Problem[] = [];
-	let interviewProblems: InterviewProblem[] = [];
-	let showProblemDialog = false;
-	let showAddTestCaseDialog = false;
-	let selectedProblem: Problem | null = null;
-	let selectedInterviewProblem: InterviewProblem | null = null;
-	let customProblemTitle = '';
-	let customProblemDescription = '';
-	let newTestCaseInput = '';
-	let newTestCaseOutput = '';
-	let isLoadingProblems = false;
+	let availableProblems = $state<Problem[]>([]);
+	let interviewProblems = $state<InterviewProblem[]>([]);
+	let showProblemDialog = $state(false);
+	let showAddTestCaseDialog = $state(false);
+	let selectedInterviewProblem = $state<InterviewProblem | null>(null);
+	let isLoadingProblems = $state(false);
 
 	// Get room ID from URL
-	$: roomId = $page.params.roomId;
+	const roomId = $derived($page.params.roomId);
 
 	// Fetch available problems from problemset
 	const fetchAvailableProblems = async () => {
@@ -86,10 +83,11 @@
 	};
 
 	// Add selected problem from problemset to interview
-	const addProblemFromSet = async () => {
-		if (!selectedProblem || !roomId || isLoadingProblems) return;
+	const handleAddProblemFromSet = async (event: CustomEvent<{ problem: Problem }>) => {
+		if (!roomId || isLoadingProblems) return;
 
 		isLoadingProblems = true;
+		const { problem } = event.detail;
 
 		try {
 			const response = await fetch(`/api/interviews/${roomId}/problems`, {
@@ -98,9 +96,9 @@
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					title: selectedProblem.title,
-					description: selectedProblem.description,
-					testCases: selectedProblem.testCases
+					title: problem.title,
+					description: problem.description,
+					testCases: problem.testCases
 				})
 			});
 
@@ -109,7 +107,6 @@
 			if (result.success) {
 				await fetchInterviewProblems();
 				showProblemDialog = false;
-				selectedProblem = null;
 			} else {
 				console.error('Failed to add problem:', result.error);
 			}
@@ -121,16 +118,13 @@
 	};
 
 	// Add custom problem to interview
-	const addCustomProblem = async () => {
-		if (
-			!customProblemTitle.trim() ||
-			!customProblemDescription.trim() ||
-			!roomId ||
-			isLoadingProblems
-		)
-			return;
+	const handleAddCustomProblem = async (
+		event: CustomEvent<{ title: string; description: string }>
+	) => {
+		if (!roomId || isLoadingProblems) return;
 
 		isLoadingProblems = true;
+		const { title, description } = event.detail;
 
 		try {
 			const response = await fetch(`/api/interviews/${roomId}/problems`, {
@@ -139,8 +133,8 @@
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					title: customProblemTitle.trim(),
-					description: customProblemDescription.trim(),
+					title: title,
+					description: description,
 					testCases: []
 				})
 			});
@@ -150,8 +144,6 @@
 			if (result.success) {
 				await fetchInterviewProblems();
 				showProblemDialog = false;
-				customProblemTitle = '';
-				customProblemDescription = '';
 			} else {
 				console.error('Failed to add custom problem:', result.error);
 			}
@@ -163,26 +155,23 @@
 	};
 
 	// Add test case to problem
-	const addTestCase = async () => {
-		if (
-			!selectedInterviewProblem ||
-			!newTestCaseInput.trim() ||
-			!newTestCaseOutput.trim() ||
-			isLoadingProblems
-		)
-			return;
+	const handleAddTestCase = async (
+		event: CustomEvent<{ input: string; output: string; problemId: string }>
+	) => {
+		if (isLoadingProblems) return;
 
 		isLoadingProblems = true;
+		const { input, output, problemId } = event.detail;
 
 		try {
-			const response = await fetch(`/api/problems/${selectedInterviewProblem.id}/testcases`, {
+			const response = await fetch(`/api/problems/${problemId}/testcases`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					input: newTestCaseInput.trim(),
-					output: newTestCaseOutput.trim()
+					input: input,
+					output: output
 				})
 			});
 
@@ -192,8 +181,6 @@
 				await fetchInterviewProblems();
 				showAddTestCaseDialog = false;
 				selectedInterviewProblem = null;
-				newTestCaseInput = '';
-				newTestCaseOutput = '';
 			} else {
 				console.error('Failed to add test case:', result.error);
 			}
@@ -205,13 +192,13 @@
 	};
 
 	// State for code execution
-	let currentCode = '';
-	let selectedProblemForSubmission: any = null;
-	let selectedTestCase: any = null;
-	let isExecuting = false;
-	let executionResults: any[] = [];
-	let currentExecutingTestCase = -1; // Track which test case is currently executing
-	let showSubmissionDialog = false;
+	let currentCode = $state('');
+	let selectedProblemForSubmission = $state<any>(null);
+	let selectedTestCase = $state<any>(null);
+	let isExecuting = $state(false);
+	let executionResults = $state<any[]>([]);
+	let currentExecutingTestCase = $state(-1); // Track which test case is currently executing
+	let showSubmissionDialog = $state(false);
 
 	// Function to handle code content changes from TiptapEditor
 	const handleCodeChange = (code: string) => {
@@ -221,19 +208,19 @@
 	// Submit code for execution
 	const submitCode = async () => {
 		if (!selectedProblemForSubmission || !currentCode.trim() || isExecuting) return;
-		
+
 		isExecuting = true;
 		executionResults = [];
 		currentExecutingTestCase = -1;
-		
+
 		try {
 			// Run code against all test cases for the selected problem
 			const testCases = selectedProblemForSubmission.testCases;
-			
+
 			for (let i = 0; i < testCases.length; i++) {
 				const testCase = testCases[i];
 				currentExecutingTestCase = i;
-				
+
 				try {
 					const response = await fetch('/api/submit', {
 						method: 'POST',
@@ -246,9 +233,9 @@
 							input: testCase.input
 						})
 					});
-					
+
 					const result = await response.json();
-					
+
 					if (result.error) {
 						executionResults.push({
 							testCaseIndex: i + 1,
@@ -263,12 +250,12 @@
 						});
 						continue;
 					}
-					
+
 					// Compare output with expected
 					const actualOutput = result.stdout?.trim() || '';
 					const expectedOutput = testCase.output.trim();
 					const passed = actualOutput === expectedOutput;
-					
+
 					executionResults.push({
 						testCaseIndex: i + 1,
 						input: testCase.input,
@@ -281,7 +268,6 @@
 						status: result.status?.description || 'Unknown',
 						statusId: result.status?.id || 0
 					});
-					
 				} catch (error) {
 					console.error(`Error executing test case ${i + 1}:`, error);
 					executionResults.push({
@@ -298,7 +284,6 @@
 					});
 				}
 			}
-			
 		} catch (error) {
 			console.error('Error during code submission:', error);
 		} finally {
@@ -307,43 +292,28 @@
 		}
 	};
 
+	const session = useSession();
+
 	// Check if current user is interviewer
-	const isInterviewer = () => {
-		// For now, we'll implement a simple role check
-		// You can modify this logic based on your authentication/role system
-		
-		// Option 1: Check URL parameter (e.g., ?role=interviewer)
-		if (!browser) return false; // Ensure this runs only in browser context
-		const urlParams = new URLSearchParams(window.location.search);
-		const role = urlParams.get('role');
-		if (role === 'interviewer') return true;
-		
-		// Option 2: For testing interviewee view, return false
-		// Change this to true if you want to test interviewer view
-		return false;
-		
-		// Option 3: For production, implement proper authentication logic here
-		// Example: return currentUser?.role === 'interviewer';
-	};
+	let isInterviewer = $state(false);
 
-	// Check if current user is interviewee  
-	const isInterviewee = () => {
-		// For now, return true for non-interviewers
-		// This will be improved when we have proper user role data
-		return true;
-	};
+	// Check if current user is interviewee
+	let isInterviewee = $state(false);
 
-	onMount(() => {
-		if (roomId) {
-			fetchInterviewProblems();
-			if (isInterviewer()) {
-				fetchAvailableProblems();
-			}
+	$effect(() => {
+		if (!$session.isPending) {
+			isInterviewer = $session.data?.user.role === 'Interviewer';
+			isInterviewee = !isInterviewer;
 		}
 	});
 
-	onDestroy(() => {
-		// Cleanup handled by individual components
+	$effect(() => {
+		if (roomId) {
+			fetchInterviewProblems();
+			if (isInterviewer) {
+				fetchAvailableProblems();
+			}
+		}
 	});
 </script>
 
@@ -355,19 +325,19 @@
 				<PaneGroup direction="vertical">
 					<!-- Code Editor -->
 					<Pane defaultSize={75} minSize={50}>
-						<div class="bg-background h-full flex flex-col">
-							<div class="px-4 py-2 border-b flex items-center justify-between">
+						<div class="flex h-full flex-col bg-background">
+							<div class="flex items-center justify-between border-b px-4 py-2">
 								<div class="flex items-center gap-2">
 									<CodeIcon size={16} />
 									<h3 class="text-sm font-medium">Code Editor</h3>
 								</div>
-								{#if isInterviewee()}
+								{#if isInterviewee}
 									<div class="flex items-center gap-2">
 										<Button
 											size="sm"
 											variant="outline"
 											class="h-8 px-2 text-xs"
-											onclick={() => showSubmissionDialog = true}
+											onclick={() => (showSubmissionDialog = true)}
 											disabled={!currentCode.trim() || interviewProblems.length === 0}
 										>
 											<PlayIcon size={12} class="mr-1" />
@@ -377,7 +347,7 @@
 								{/if}
 							</div>
 							<div class="flex-1 p-4">
-								<TiptapEditor roomId={$page.params.roomId} onContentChange={handleCodeChange} />
+								<TiptapEditor {roomId} onContentChange={handleCodeChange} />
 							</div>
 						</div>
 					</Pane>
@@ -398,7 +368,7 @@
 									<FlaskConicalIcon size={16} />
 									<h3 class="text-sm font-medium">Problems & Test Cases</h3>
 								</div>
-								{#if isInterviewer()}
+								{#if isInterviewer}
 									<div class="flex items-center gap-1">
 										<Button
 											size="sm"
@@ -417,7 +387,7 @@
 									<div class="py-8 text-center text-sm text-muted-foreground">
 										<FlaskConicalIcon size={32} class="mx-auto mb-2 opacity-50" />
 										<p>No problems added yet.</p>
-										{#if isInterviewer()}
+										{#if isInterviewer}
 											<Button
 												size="sm"
 												variant="outline"
@@ -439,7 +409,7 @@
 															{problem.description}
 														</p>
 													</div>
-													{#if isInterviewer()}
+													{#if isInterviewer}
 														<Button
 															size="sm"
 															variant="ghost"
@@ -542,196 +512,47 @@
 	</div>
 </main>
 
-<!-- Problem Selection Sheet -->
-<Sheet.Root bind:open={showProblemDialog}>
-	<Sheet.Content side="right" class="w-full overflow-y-auto p-6 sm:max-w-2xl">
-		<Sheet.Header>
-			<Sheet.Title>Add Problem to Interview</Sheet.Title>
-			<Sheet.Description>Choose from predefined problems or create a custom one.</Sheet.Description>
-		</Sheet.Header>
+<!-- Problem Management Components -->
+<AddProblemDialog
+	bind:open={showProblemDialog}
+	{availableProblems}
+	isLoading={isLoadingProblems}
+	{roomId}
+	on:close={() => (showProblemDialog = false)}
+	on:addProblemFromSet={handleAddProblemFromSet}
+	on:addCustomProblem={handleAddCustomProblem}
+/>
 
-		<div class="space-y-6 py-6">
-			<!-- Custom Problem Form -->
-			<div class="space-y-4">
-				<div>
-					<Label for="problem-title">Problem Title</Label>
-					<Input
-						id="problem-title"
-						bind:value={customProblemTitle}
-						placeholder="Enter problem title..."
-						class="mt-1"
-					/>
-				</div>
-				<div>
-					<Label for="problem-description">Problem Description</Label>
-					<Textarea
-						id="problem-description"
-						bind:value={customProblemDescription}
-						placeholder="Enter problem description..."
-						rows={6}
-						class="mt-1"
-					/>
-				</div>
-			</div>
-
-			<!-- Predefined Problems List -->
-			<div class="space-y-4">
-				<h3 class="text-sm font-medium text-muted-foreground">
-					Or choose from predefined problems:
-				</h3>
-				<div class="max-h-64 space-y-2 overflow-y-auto rounded-lg border">
-					{#each availableProblems as problem}
-						<button
-							class="w-full border-b p-3 text-left transition-colors last:border-b-0 hover:bg-muted"
-							onclick={() => (selectedProblem = problem)}
-						>
-							<div class="flex items-center justify-between">
-								<div class="flex-1">
-									<h4 class="text-sm font-medium">{problem.title}</h4>
-									<p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
-										{problem.description}
-									</p>
-								</div>
-								<div class="ml-2 flex items-center gap-2">
-									<Badge variant="outline" class="text-xs">
-										{problem.difficulty}
-									</Badge>
-									<Badge variant="secondary" class="text-xs">
-										{problem.testCases.length} tests
-									</Badge>
-								</div>
-							</div>
-						</button>
-					{/each}
-				</div>
-			</div>
-
-			{#if selectedProblem}
-				<!-- Selected Problem Preview -->
-				<div class="rounded-lg border bg-muted/50 p-4">
-					<div class="mb-2 flex items-center justify-between">
-						<h4 class="font-semibold">{selectedProblem.title}</h4>
-						<div class="flex items-center gap-2">
-							<Badge variant="outline">{selectedProblem.difficulty}</Badge>
-							<Badge variant="secondary">{selectedProblem.testCases.length} test cases</Badge>
-						</div>
-					</div>
-					<p class="mb-3 text-sm text-muted-foreground">{selectedProblem.description}</p>
-					<div class="text-xs text-muted-foreground">
-						<strong>Tags:</strong>
-						{selectedProblem.tags.join(', ')}
-					</div>
-				</div>
-			{/if}
-		</div>
-
-		<div class="flex gap-2 pt-6">
-			<Button
-				variant="outline"
-				onclick={() => {
-					showProblemDialog = false;
-					selectedProblem = null;
-					customProblemTitle = '';
-					customProblemDescription = '';
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				onclick={selectedProblem ? addProblemFromSet : addCustomProblem}
-				disabled={isLoadingProblems ||
-					(!selectedProblem && (!customProblemTitle.trim() || !customProblemDescription.trim()))}
-			>
-				{#if isLoadingProblems}
-					<div
-						class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
-					></div>
-				{/if}
-				Add Problem
-			</Button>
-		</div>
-	</Sheet.Content>
-</Sheet.Root>
-
-<!-- Add Test Case Sheet -->
-<Sheet.Root bind:open={showAddTestCaseDialog}>
-	<Sheet.Content side="right" class="w-full p-6 sm:max-w-lg">
-		<Sheet.Header>
-			<Sheet.Title>Add Test Case</Sheet.Title>
-			<Sheet.Description>
-				Add a new test case to "{selectedInterviewProblem?.title}".
-			</Sheet.Description>
-		</Sheet.Header>
-
-		<div class="space-y-4 py-6">
-			<div>
-				<Label for="test-input">Input</Label>
-				<Textarea
-					id="test-input"
-					bind:value={newTestCaseInput}
-					placeholder="Enter test input..."
-					rows={3}
-					class="mt-1"
-				/>
-			</div>
-			<div>
-				<Label for="test-output">Expected Output</Label>
-				<Textarea
-					id="test-output"
-					bind:value={newTestCaseOutput}
-					placeholder="Enter expected output..."
-					rows={3}
-					class="mt-1"
-				/>
-			</div>
-		</div>
-
-		<div class="flex gap-2 pt-6">
-			<Button
-				variant="outline"
-				onclick={() => {
-					showAddTestCaseDialog = false;
-					selectedInterviewProblem = null;
-					newTestCaseInput = '';
-					newTestCaseOutput = '';
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				onclick={addTestCase}
-				disabled={isLoadingProblems || !newTestCaseInput.trim() || !newTestCaseOutput.trim()}
-			>
-				{#if isLoadingProblems}
-					<div
-						class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
-					></div>
-				{/if}
-				Add Test Case
-			</Button>
-		</div>
-	</Sheet.Content>
-</Sheet.Root>
+<AddTestCaseDialog
+	bind:open={showAddTestCaseDialog}
+	selectedProblem={selectedInterviewProblem}
+	isLoading={isLoadingProblems}
+	on:close={() => {
+		showAddTestCaseDialog = false;
+		selectedInterviewProblem = null;
+	}}
+	on:addTestCase={handleAddTestCase}
+/>
 
 <!-- Code Submission Sheet -->
 <Sheet.Root bind:open={showSubmissionDialog}>
-	<Sheet.Content side="right" class="w-full sm:max-w-4xl p-6 max-h-screen overflow-y-auto">
+	<Sheet.Content side="right" class="max-h-screen w-full overflow-y-auto p-6 sm:max-w-4xl">
 		<Sheet.Header>
 			<Sheet.Title>Run Code Tests</Sheet.Title>
 			<Sheet.Description>
 				Select a problem and run your code against its test cases.
 			</Sheet.Description>
 		</Sheet.Header>
-		
+
 		<div class="space-y-6 py-6">
 			<!-- Problem Selection -->
 			<div class="space-y-3">
 				<Label>Select Problem</Label>
-				<Select.Root 
-					type="single" 
-					value={selectedProblemForSubmission?.id} 
+				<Select.Root
+					type="single"
+					value={selectedProblemForSubmission?.id}
 					onValueChange={(value) => {
-						selectedProblemForSubmission = interviewProblems.find(p => p.id === value) || null;
+						selectedProblemForSubmission = interviewProblems.find((p) => p.id === value) || null;
 					}}
 				>
 					<Select.Trigger class="w-full">
@@ -751,11 +572,14 @@
 
 			{#if selectedProblemForSubmission}
 				<!-- Problem Details -->
-				<div class="border rounded-lg p-4 bg-muted/50">
-					<h3 class="font-semibold mb-2">{selectedProblemForSubmission.title}</h3>
-					<p class="text-sm text-muted-foreground mb-3">{selectedProblemForSubmission.description}</p>
+				<div class="rounded-lg border bg-muted/50 p-4">
+					<h3 class="mb-2 font-semibold">{selectedProblemForSubmission.title}</h3>
+					<p class="mb-3 text-sm text-muted-foreground">
+						{selectedProblemForSubmission.description}
+					</p>
 					<div class="text-xs text-muted-foreground">
-						<strong>Test Cases:</strong> {selectedProblemForSubmission.testCases.length}
+						<strong>Test Cases:</strong>
+						{selectedProblemForSubmission.testCases.length}
 					</div>
 				</div>
 
@@ -766,73 +590,108 @@
 							<h3 class="text-sm font-medium">Test Results</h3>
 							{#if isExecuting}
 								<div class="flex items-center gap-2 text-xs text-muted-foreground">
-									<div class="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+									<div
+										class="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent"
+									></div>
 									{#if currentExecutingTestCase >= 0}
-										Running test case {currentExecutingTestCase + 1}/{selectedProblemForSubmission?.testCases?.length || 0}
+										Running test case {currentExecutingTestCase + 1}/{selectedProblemForSubmission
+											?.testCases?.length || 0}
 									{:else}
 										Preparing execution...
 									{/if}
 								</div>
 							{/if}
 						</div>
-						
-						<div class="max-h-[60vh] min-h-64 border rounded-lg overflow-y-auto">
+
+						<div class="max-h-[60vh] min-h-64 overflow-y-auto rounded-lg border">
 							<div class="p-3">
 								<div class="space-y-3">
 									{#if isExecuting}
 										<!-- Show progress for test cases -->
 										{#each Array(selectedProblemForSubmission?.testCases?.length || 0) as _, index}
-											<div class="border rounded-lg p-3 {
-												index < executionResults.length 
-													? executionResults[index].passed 
-														? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950' 
+											<div
+												class="rounded-lg border p-3 {index < executionResults.length
+													? executionResults[index].passed
+														? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950'
 														: 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950'
 													: index === currentExecutingTestCase
 														? 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950'
-														: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900'
-											}">
-												<div class="flex items-center justify-between mb-2">
+														: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900'}"
+											>
+												<div class="mb-2 flex items-center justify-between">
 													<span class="text-sm font-medium">Test Case {index + 1}</span>
 													{#if index < executionResults.length}
-														<Badge variant={executionResults[index].passed ? 'default' : 'destructive'} class="text-xs">
+														<Badge
+															variant={executionResults[index].passed ? 'default' : 'destructive'}
+															class="text-xs"
+														>
 															{executionResults[index].passed ? 'PASSED' : 'FAILED'}
 														</Badge>
 													{:else if index === currentExecutingTestCase}
 														<div class="flex items-center gap-1">
-															<div class="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+															<div
+																class="h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"
+															></div>
 															<span class="text-xs text-blue-600">Running...</span>
 														</div>
 													{:else}
 														<Badge variant="outline" class="text-xs">Pending</Badge>
 													{/if}
 												</div>
-												
+
 												{#if index < executionResults.length}
 													<!-- Show completed result -->
-													<div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+													<div class="grid grid-cols-1 gap-3 text-xs md:grid-cols-3">
 														<div>
-															<div class="font-medium text-muted-foreground mb-1">Input</div>
-															<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs">{executionResults[index].input}</div>
+															<div class="mb-1 font-medium text-muted-foreground">Input</div>
+															<div
+																class="max-h-16 overflow-y-auto rounded border bg-background p-2 font-mono text-xs"
+															>
+																{executionResults[index].input}
+															</div>
 														</div>
 														<div>
-															<div class="font-medium text-muted-foreground mb-1">Expected</div>
-															<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs">{executionResults[index].expectedOutput}</div>
+															<div class="mb-1 font-medium text-muted-foreground">Expected</div>
+															<div
+																class="max-h-16 overflow-y-auto rounded border bg-background p-2 font-mono text-xs"
+															>
+																{executionResults[index].expectedOutput}
+															</div>
 														</div>
 														<div>
-															<div class="font-medium text-muted-foreground mb-1">Your Output</div>
-															<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs {executionResults[index].passed ? 'text-green-600' : 'text-red-600'}">{executionResults[index].actualOutput || 'No output'}</div>
+															<div class="mb-1 font-medium text-muted-foreground">Your Output</div>
+															<div
+																class="max-h-16 overflow-y-auto rounded border bg-background p-2 font-mono text-xs {executionResults[
+																	index
+																].passed
+																	? 'text-green-600'
+																	: 'text-red-600'}"
+															>
+																{executionResults[index].actualOutput || 'No output'}
+															</div>
 														</div>
 													</div>
-													
+
 													{#if executionResults[index].error}
 														<div class="mt-2">
-															<div class="font-medium text-muted-foreground mb-1 text-xs">Error</div>
-															<div class="bg-red-100 dark:bg-red-950 p-2 rounded border text-xs font-mono text-red-700 dark:text-red-300 max-h-20 overflow-y-auto">{executionResults[index].error}</div>
+															<div class="mb-1 text-xs font-medium text-muted-foreground">
+																Error
+															</div>
+															<div
+																class="max-h-20 overflow-y-auto rounded border bg-red-100 p-2 font-mono text-xs text-red-700 dark:bg-red-950 dark:text-red-300"
+															>
+																{executionResults[index].error}
+															</div>
 														</div>
 													{/if}
-													
-													<div class="flex justify-between items-center mt-2 text-xs text-muted-foreground">
-														<span>Time: {executionResults[index].executionTime?.toFixed(3) || '0.000'}s</span>
+
+													<div
+														class="mt-2 flex items-center justify-between text-xs text-muted-foreground"
+													>
+														<span
+															>Time: {executionResults[index].executionTime?.toFixed(3) ||
+																'0.000'}s</span
+														>
 														<div class="flex gap-3">
 															<span>Memory: {executionResults[index].memory || 0} KB</span>
 															{#if executionResults[index].status}
@@ -849,46 +708,71 @@
 													</div>
 												{:else}
 													<!-- Show placeholder for pending tests -->
-													<div class="text-xs text-muted-foreground">
-														Waiting in queue...
-													</div>
+													<div class="text-xs text-muted-foreground">Waiting in queue...</div>
 												{/if}
 											</div>
 										{/each}
 									{:else}
 										<!-- Show completed results -->
 										{#each executionResults as result}
-											<div class="border rounded-lg p-3 {result.passed ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950' : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950'}">
-												<div class="flex items-center justify-between mb-2">
+											<div
+												class="rounded-lg border p-3 {result.passed
+													? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950'
+													: 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950'}"
+											>
+												<div class="mb-2 flex items-center justify-between">
 													<span class="text-sm font-medium">Test Case {result.testCaseIndex}</span>
-													<Badge variant={result.passed ? 'default' : 'destructive'} class="text-xs">
+													<Badge
+														variant={result.passed ? 'default' : 'destructive'}
+														class="text-xs"
+													>
 														{result.passed ? 'PASSED' : 'FAILED'}
 													</Badge>
 												</div>
-												
-												<div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+
+												<div class="grid grid-cols-1 gap-3 text-xs md:grid-cols-3">
 													<div>
-														<div class="font-medium text-muted-foreground mb-1">Input</div>
-														<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs">{result.input}</div>
+														<div class="mb-1 font-medium text-muted-foreground">Input</div>
+														<div
+															class="max-h-16 overflow-y-auto rounded border bg-background p-2 font-mono text-xs"
+														>
+															{result.input}
+														</div>
 													</div>
 													<div>
-														<div class="font-medium text-muted-foreground mb-1">Expected</div>
-														<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs">{result.expectedOutput}</div>
+														<div class="mb-1 font-medium text-muted-foreground">Expected</div>
+														<div
+															class="max-h-16 overflow-y-auto rounded border bg-background p-2 font-mono text-xs"
+														>
+															{result.expectedOutput}
+														</div>
 													</div>
 													<div>
-														<div class="font-medium text-muted-foreground mb-1">Your Output</div>
-														<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs {result.passed ? 'text-green-600' : 'text-red-600'}">{result.actualOutput || 'No output'}</div>
+														<div class="mb-1 font-medium text-muted-foreground">Your Output</div>
+														<div
+															class="max-h-16 overflow-y-auto rounded border bg-background p-2 font-mono text-xs {result.passed
+																? 'text-green-600'
+																: 'text-red-600'}"
+														>
+															{result.actualOutput || 'No output'}
+														</div>
 													</div>
 												</div>
-												
+
 												{#if result.error}
 													<div class="mt-2">
-														<div class="font-medium text-muted-foreground mb-1 text-xs">Error</div>
-														<div class="bg-red-100 dark:bg-red-950 p-2 rounded border text-xs font-mono text-red-700 dark:text-red-300 max-h-20 overflow-y-auto">{result.error}</div>
+														<div class="mb-1 text-xs font-medium text-muted-foreground">Error</div>
+														<div
+															class="max-h-20 overflow-y-auto rounded border bg-red-100 p-2 font-mono text-xs text-red-700 dark:bg-red-950 dark:text-red-300"
+														>
+															{result.error}
+														</div>
 													</div>
 												{/if}
-												
-												<div class="flex justify-between items-center mt-2 text-xs text-muted-foreground">
+
+												<div
+													class="mt-2 flex items-center justify-between text-xs text-muted-foreground"
+												>
 													<span>Time: {result.executionTime?.toFixed(3) || '0.000'}s</span>
 													<div class="flex gap-3">
 														<span>Memory: {result.memory || 0} KB</span>
@@ -900,27 +784,36 @@
 											</div>
 										{/each}
 									{/if}
-									
+
 									<!-- Summary -->
 									{#if !isExecuting && executionResults.length > 0}
-										<div class="bg-muted p-3 rounded-lg mt-3">
-											<div class="text-sm font-medium mb-1">
-												Results: {executionResults.filter(r => r.passed).length}/{executionResults.length} tests passed
+										<div class="mt-3 rounded-lg bg-muted p-3">
+											<div class="mb-1 text-sm font-medium">
+												Results: {executionResults.filter((r) => r.passed)
+													.length}/{executionResults.length} tests passed
 											</div>
 											<div class="text-xs text-muted-foreground">
-												{#if executionResults.every(r => r.passed)}
+												{#if executionResults.every((r) => r.passed)}
 													🎉 All tests passed! Great job!
-												{:else if executionResults.some(r => r.passed)}
-													{executionResults.filter(r => r.passed).length} tests passed. Keep working on the remaining ones!
+												{:else if executionResults.some((r) => r.passed)}
+													{executionResults.filter((r) => r.passed).length} tests passed. Keep working
+													on the remaining ones!
 												{:else}
 													No tests passed. Review the errors and try again.
 												{/if}
 											</div>
-											
+
 											<!-- Overall stats -->
-											<div class="flex gap-4 mt-2 text-xs text-muted-foreground">
-												<span>Avg Time: {(executionResults.reduce((sum, r) => sum + (r.executionTime || 0), 0) / executionResults.length).toFixed(3)}s</span>
-												<span>Max Memory: {Math.max(...executionResults.map(r => r.memory || 0))} KB</span>
+											<div class="mt-2 flex gap-4 text-xs text-muted-foreground">
+												<span
+													>Avg Time: {(
+														executionResults.reduce((sum, r) => sum + (r.executionTime || 0), 0) /
+														executionResults.length
+													).toFixed(3)}s</span
+												>
+												<span
+													>Max Memory: {Math.max(...executionResults.map((r) => r.memory || 0))} KB</span
+												>
 											</div>
 										</div>
 									{/if}
@@ -948,9 +841,12 @@
 				disabled={isExecuting || !selectedProblemForSubmission || !currentCode.trim()}
 			>
 				{#if isExecuting}
-					<div class="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2"></div>
+					<div
+						class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
+					></div>
 					{#if currentExecutingTestCase >= 0}
-						Running Test {currentExecutingTestCase + 1}/{selectedProblemForSubmission?.testCases?.length || 0}
+						Running Test {currentExecutingTestCase + 1}/{selectedProblemForSubmission?.testCases
+							?.length || 0}
 					{:else}
 						Preparing Tests...
 					{/if}
