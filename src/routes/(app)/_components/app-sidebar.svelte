@@ -88,7 +88,7 @@
 				{:else if !$session.data}
 					<Sidebar.MenuButton variant="outline">
 						{#snippet child({ props })}
-							<a {...props} href="/login">
+							<a {...props} href="/">
 								<LogInIcon /> Login
 							</a>
 						{/snippet}

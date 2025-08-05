@@ -1,5 +1,16 @@
 <script lang="ts">
-	import { Mic, User, Video, MicOff, VideoOff, HelpCircle, RefreshCw, Shield } from 'lucide-svelte';
+	import {
+		Mic,
+		User,
+		Video,
+		MicOff,
+		VideoOff,
+		HelpCircle,
+		RefreshCw,
+		Shield,
+		Eye,
+		EyeOff
+	} from 'lucide-svelte';
 	import type { ILocalAudioTrack, ILocalVideoTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 	import { toast } from 'svelte-sonner';
 	import { browser } from '$app/environment';
@@ -36,6 +47,16 @@
 	let users: IAgoraRTCRemoteUser[] = $state([]);
 	let remoteUserName: string | null = $state(null);
 	let remoteUserImage: string | null = $state(null);
+
+	// Eye tracking states
+	let isEyeTrackingActive = $state(false);
+	let isEyeTrackingInitializing = $state(false);
+	let eyeTrackingError = $state<string | null>(null);
+	let webGazer: any = null;
+	let gazeData: { x: number; y: number; timestamp: number }[] = $state([]);
+	let currentGaze = $state<{ x: number; y: number } | null>(null);
+	let eyeTrackingOverlay: HTMLCanvasElement | null = null;
+	let animationFrameId: number | null = null;
 
 	let AgoraRTC: any = null;
 	let client: any = null;
@@ -104,6 +125,11 @@
 
 	async function cleanup() {
 		try {
+			// Stop eye tracking if active
+			if (isEyeTrackingActive && webGazer) {
+				await stopEyeTracking();
+			}
+
 			if (video) {
 				video.close();
 				video = null;
@@ -205,6 +231,11 @@
 
 			client.on('user-left', (user: IAgoraRTCRemoteUser) => {
 				users = users.filter((u) => u.uid !== user.uid);
+
+				// Stop eye tracking if the tracked user left
+				if (isEyeTrackingActive && users.length === 0) {
+					stopEyeTracking();
+				}
 			});
 
 			client.on('connection-state-change', (curState: string) => {
@@ -367,6 +398,142 @@
 		await checkPermissions();
 	}
 
+	// Eye tracking functions
+	async function startEyeTracking() {
+		if (!isInterviewer || users.length === 0) {
+			toast.error('Eye tracking is only available for interviewers when an interviewee is present');
+			return;
+		}
+
+		if (remoteCameraOff) {
+			toast.error("Cannot start eye tracking while the interviewee's camera is off");
+			return;
+		}
+
+		try {
+			isEyeTrackingInitializing = true;
+			eyeTrackingError = null;
+			gazeData = [];
+
+			// Get the remote video element
+			const remoteUser = users[0];
+			const remoteVideoElement = document.getElementById(String(remoteUser.uid)) as HTMLVideoElement;
+			
+			if (!remoteVideoElement) {
+				throw new Error('Remote video element not found');
+			}
+
+			// Load WebGazer if not already loaded
+			if (!webGazer) {
+				const script = document.createElement('script');
+				script.src = 'https://webgazer.cs.brown.edu/webgazer.js';
+				script.async = true;
+
+				await new Promise((resolve, reject) => {
+					script.onload = resolve;
+					script.onerror = reject;
+					document.head.appendChild(script);
+				});
+
+				// @ts-ignore
+				webGazer = window.webgazer;
+			}
+
+			if (!webGazer) {
+				throw new Error('Failed to load WebGazer library');
+			}
+
+			// Configure WebGazer to use the remote video stream
+			webGazer
+				.setRegression('ridge')
+				.setTracker('clmtrackr')
+				.showPredictionPoints(false)
+				.showFaceOverlay(false)
+				.showFaceFeedbackBox(false)
+				.showVideo(false);
+
+			// Set the video source to the remote video element
+			webGazer.params.videoElementWebgazer = remoteVideoElement;
+
+			// Set up gaze listener to analyze the remote video
+			await webGazer
+				.setGazeListener((data: { x: number; y: number } | null) => {
+					if (data && remoteVideoElement) {
+						// Convert gaze coordinates relative to the remote video element
+						const videoRect = remoteVideoElement.getBoundingClientRect();
+						const relativeX = data.x - videoRect.left;
+						const relativeY = data.y - videoRect.top;
+						
+						currentGaze = { x: relativeX, y: relativeY };
+
+						// Add to history (keep last 100 points)
+						gazeData.push({
+							x: relativeX,
+							y: relativeY,
+							timestamp: Date.now()
+						});
+
+						if (gazeData.length > 100) {
+							gazeData = gazeData.slice(-100);
+						}
+
+						// Check if gaze is within the remote video bounds
+						const isLookingAtVideo = relativeX >= 0 && relativeX <= videoRect.width && 
+							relativeY >= 0 && relativeY <= videoRect.height;
+
+						// Log gaze coordinates for debugging
+						console.log(`Remote Video Gaze: X=${Math.round(relativeX)}, Y=${Math.round(relativeY)}, Looking at video: ${isLookingAtVideo}`);
+						
+						// You can add warnings here if the person looks away
+						if (!isLookingAtVideo) {
+							console.warn('Interviewee looking away from video area');
+						}
+					}
+				})
+				.begin();
+
+			isEyeTrackingActive = true;
+			isEyeTrackingInitializing = false;
+			toast.success('Eye tracking started - analyzing remote video feed');
+		} catch (err) {
+			console.error('Error starting eye tracking:', err);
+			isEyeTrackingInitializing = false;
+			eyeTrackingError = err instanceof Error ? err.message : 'Failed to start eye tracking';
+			toast.error('Failed to start eye tracking');
+		}
+	}
+
+	async function stopEyeTracking() {
+		try {
+			if (webGazer) {
+				await webGazer.end();
+			}
+
+			// Stop drawing loop
+			if (animationFrameId) {
+				cancelAnimationFrame(animationFrameId);
+				animationFrameId = null;
+			}
+
+			// Remove overlay
+			if (eyeTrackingOverlay) {
+				eyeTrackingOverlay.remove();
+				eyeTrackingOverlay = null;
+			}
+
+			// Reset tracking data
+			gazeData = [];
+			currentGaze = null;
+
+			isEyeTrackingActive = false;
+			eyeTrackingError = null;
+			toast.success('Eye tracking stopped');
+		} catch (err) {
+			console.error('Error stopping eye tracking:', err);
+			toast.error('Error stopping eye tracking');
+		}
+	}
+
 	onMount(() => {
 		// Permissions will be checked in onMount
 	});
@@ -527,11 +694,14 @@
 							</div>
 						</div>
 					{:else}
-						<div
-							id={String(remoteUser.uid)}
-							use:renderVideo={remoteUser}
-							class="h-full w-full"
-						></div>
+						<div class="relative h-full w-full">
+							<div
+								id={String(remoteUser.uid)}
+								use:renderVideo={remoteUser}
+								class="h-full w-full"
+							></div>
+						</div>
+
 						<div class="absolute bottom-6 left-6">
 							<div class="rounded-lg bg-black/60 px-3 py-2 backdrop-blur-sm">
 								<span class="text-sm font-medium text-white">
@@ -560,6 +730,28 @@
 								class="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/90 backdrop-blur-sm"
 							>
 								<MicOff class="h-5 w-5 text-white" />
+							</div>
+						</div>
+					{/if}
+
+					{#if eyeTrackingError}
+						<div class="absolute top-6 left-6">
+							<div class="rounded-lg bg-red-500/90 px-3 py-2 backdrop-blur-sm">
+								<span class="text-sm text-white">Eye tracking error: {eyeTrackingError}</span>
+							</div>
+						</div>
+					{/if}
+
+					{#if isEyeTrackingActive && isInterviewer}
+						<div class="absolute top-6 left-6">
+							<div class="rounded-lg bg-blue-500/90 px-3 py-2 backdrop-blur-sm">
+								<span class="flex items-center gap-2 text-sm text-white">
+									<Eye class="h-4 w-4" />
+									Eye tracking active
+									{#if currentGaze}
+										- X: {Math.round(currentGaze.x)}, Y: {Math.round(currentGaze.y)}
+									{/if}
+								</span>
 							</div>
 						</div>
 					{/if}
@@ -631,18 +823,39 @@
 							<Mic class="h-6 w-6" />
 						{/if}
 					</Button>
+
+					<Button
+						size="lg"
+						variant={isEyeTrackingActive ? 'secondary' : 'outline'}
+						onclick={isEyeTrackingActive ? stopEyeTracking : startEyeTracking}
+						class="h-14 w-14 rounded-full"
+					>
+						<Eye class="h-6 w-6" />
+					</Button>
 				</div>
 			</div>
 		</div>
 	{/if}
 </div>
 
+// ...existing code...
+
 <style>
-	#local-video,
-	[id^='agora-'] {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		border-radius: inherit;
+	/* Hide any WebGazer video elements that might appear */
+	:global(#webgazerVideoFeed) {
+		display: none !important;
+	}
+
+	:global(#webgazerFaceOverlay) {
+		display: none !important;
+	}
+
+	:global(#webgazerFaceFeedbackBox) {
+		display: none !important;
+	}
+
+	/* Prevent picture-in-picture */
+	:global(video::-webkit-media-controls-picture-in-picture-button) {
+		display: none !important;
 	}
 </style>
