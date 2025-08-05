@@ -20,7 +20,7 @@
 				const currentEditor = editor;
 				editor = null;
 				editor = currentEditor;
-			},
+			}
 		});
 	});
 
@@ -40,7 +40,7 @@
 </script>
 
 {#if editor}
-	<div class="flex items-center gap-1 p-2 border-b border-border">
+	<div class="flex items-center gap-1 border-b border-border p-2">
 		<!-- Text Format Toggles -->
 		<div class="flex items-center gap-1">
 			<Toggle
@@ -107,9 +107,9 @@
 	</div>
 {/if}
 
-<div 
-	bind:this={element} 
-	class="prose prose-sm max-w-none p-4 min-h-64 border rounded-md [&_.ProseMirror]:outline-none [&_.ProseMirror]:border-none [&_.ProseMirror]:p-0 [&_.ProseMirror]:m-0"
+<div
+	bind:this={element}
+	class="prose min-h-64 max-w-none rounded-md border p-4 dark:prose-invert [&_.ProseMirror]:m-0 [&_.ProseMirror]:border-none [&_.ProseMirror]:p-0 [&_.ProseMirror]:outline-none"
 ></div>
 
 <style>
@@ -120,11 +120,10 @@
 		margin: 0 !important;
 		min-height: inherit;
 	}
-	
+
 	:global(.ProseMirror:focus) {
 		outline: none !important;
 		box-shadow: none !important;
 		border: none !important;
 	}
 </style>
-
