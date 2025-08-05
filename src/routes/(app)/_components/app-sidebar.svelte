@@ -7,7 +7,8 @@
 		UserRoundIcon,
 		ChevronUpIcon,
 		LoaderCircleIcon,
-		LayoutDashboardIcon
+		LayoutDashboardIcon,
+		MessageCircle
 	} from 'lucide-svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -21,6 +22,7 @@
 			label: 'Main',
 			items: [
 				{ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboardIcon },
+				{ label: 'Chat', href: '/chat', icon: MessageCircle },
 				{ label: 'History', href: '/history', icon: HistoryIcon },
 				{ label: 'Profile', href: '/profile', icon: UserIcon }
 			]

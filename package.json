@@ -15,6 +15,8 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
 	"devDependencies": {
+		"@ai-sdk/openai": "^2.0.3",
+		"@ai-sdk/svelte": "^3.0.4",
 		"@dnd-kit-svelte/core": "^0.0.8",
 		"@dnd-kit-svelte/modifiers": "^0.0.8",
 		"@dnd-kit-svelte/sortable": "^0.0.8",
@@ -33,7 +35,9 @@
 		"@types/d3-scale": "^4.0.9",
 		"@types/d3-shape": "^3.1.7",
 		"@types/jsonwebtoken": "^9.0.10",
+		"@types/marked": "^5.0.2",
 		"@types/node": "^24.2.0",
+		"ai": "^5.0.4",
 		"bits-ui": "^2.9.1",
 		"clsx": "^2.1.1",
 		"d3-scale": "^4.0.2",
@@ -61,6 +65,7 @@
 	},
 	"dependencies": {
 		"@mediapipe/tasks-vision": "^0.10.22-rc.20250304",
+		"@openrouter/ai-sdk-provider": "^1.0.0-beta.6",
 		"@prisma/client": "^6.13.0",
 		"@tiptap-pro/provider": "^3.0.1",
 		"@tiptap/core": "^3.0.9",
@@ -76,6 +81,7 @@
 		"jsonwebtoken": "^9.0.2",
 		"lowlight": "^3.3.0",
 		"lucide-svelte": "^0.536.0",
+		"marked": "^16.1.2",
 		"mode-watcher": "^1.1.0",
 		"paneforge": "^1.0.2",
 		"prisma": "^6.13.0",
