@@ -69,7 +69,15 @@ export const GET: RequestHandler = async ({ request }) => {
 					select: {
 						id: true,
 						title: true,
-						score: true
+						description: true,
+						score: true,
+						testCases: {
+							select: {
+								testCaseId: true,
+								input: true,
+								output: true
+							}
+						}
 					}
 				}
 			},
