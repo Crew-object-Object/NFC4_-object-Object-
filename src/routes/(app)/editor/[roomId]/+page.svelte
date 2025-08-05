@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
-	import { useSession } from '$lib/auth-client';
 	import VideoCall from '$lib/components/video-call.svelte';
+	import TiptapEditor from '$lib/components/tiptap.svelte';
 	import InterviewChat from '$lib/components/interview-chat.svelte';
 	import { Pane, PaneGroup, PaneResizer } from 'paneforge';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
@@ -19,8 +19,6 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import type { Problem } from '$lib/problemset';
-
-	const session = useSession();
 
 	interface InterviewProblem {
 		id: string;
@@ -211,6 +209,11 @@
 	let executionResults: any[] = [];
 	let showSubmissionDialog = false;
 
+	// Function to handle code content changes from TiptapEditor
+	const handleCodeChange = (code: string) => {
+		currentCode = code;
+	};
+
 	// Submit code for execution
 	const submitCode = async () => {
 		if (!selectedProblemForSubmission || !currentCode.trim() || isExecuting) return;
@@ -233,12 +236,14 @@
 						},
 						body: JSON.stringify({
 							code: currentCode,
-							language_id: '71', // Python 3
+							language_id: '10', // Python 3
 							input: testCase.input
 						})
 					});
 					
 					const result = await response.json();
+
+					console.log(result)
 					
 					// Compare output with expected
 					const actualOutput = result.stdout?.trim() || '';
@@ -336,12 +341,7 @@
 								{/if}
 							</div>
 							<div class="flex-1 p-4">
-								<Textarea
-									bind:value={currentCode}
-									placeholder="Write your code here..."
-									class="h-full resize-none font-mono text-sm"
-									rows={20}
-								/>
+								<TiptapEditor roomId={$page.params.roomId} onContentChange={handleCodeChange} />
 							</div>
 						</div>
 					</Pane>
