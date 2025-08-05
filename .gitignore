@@ -1,5 +1,7 @@
-node_modules
 .npmrc
+generated
+test-results
+node_modules
 
 # Output
 .output
@@ -22,5 +24,3 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-
-/../generated/prisma
