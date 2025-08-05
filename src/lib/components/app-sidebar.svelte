@@ -54,88 +54,6 @@
 				icon: UsersIcon,
 			},
 		],
-		navClouds: [
-			{
-				title: "Capture",
-				icon: CameraIcon,
-				isActive: true,
-				url: "#",
-				items: [
-					{
-						title: "Active Proposals",
-						url: "#",
-					},
-					{
-						title: "Archived",
-						url: "#",
-					},
-				],
-			},
-			{
-				title: "Proposal",
-				icon: FileDescriptionIcon,
-				url: "#",
-				items: [
-					{
-						title: "Active Proposals",
-						url: "#",
-					},
-					{
-						title: "Archived",
-						url: "#",
-					},
-				],
-			},
-			{
-				title: "Prompts",
-				icon: FileAiIcon,
-				url: "#",
-				items: [
-					{
-						title: "Active Proposals",
-						url: "#",
-					},
-					{
-						title: "Archived",
-						url: "#",
-					},
-				],
-			},
-		],
-		navSecondary: [
-			{
-				title: "Settings",
-				url: "#",
-				icon: SettingsIcon,
-			},
-			{
-				title: "Get Help",
-				url: "#",
-				icon: HelpIcon,
-			},
-			{
-				title: "Search",
-				url: "#",
-				icon: SearchIcon,
-			},
-		],
-		documents: [
-			{
-				name: "Data Library",
-				url: "#",
-				icon: DatabaseIcon,
-			},
-			{
-				name: "Reports",
-				url: "#",
-				icon: ReportIcon,
-			},
-			{
-				name: "Word Assistant",
-				url: "#",
-				icon: FileWordIcon,
-			},
-		],
 	};
 
 	let { ...restProps }: ComponentProps<typeof Sidebar.Root> = $props();
@@ -147,7 +65,7 @@
 			<Sidebar.MenuItem>
 				<Sidebar.MenuButton class="data-[slot=sidebar-menu-button]:!p-1.5">
 					{#snippet child({ props })}
-						<a href="##" {...props}>
+						<a href="/" {...props}>
 							<InnerShadowTopIcon class="!size-5" />
 							<span class="text-base font-semibold">Acme Inc.</span>
 						</a>
@@ -158,8 +76,6 @@
 	</Sidebar.Header>
 	<Sidebar.Content>
 		<NavMain items={data.navMain} />
-		<NavDocuments items={data.documents} />
-		<NavSecondary items={data.navSecondary} class="mt-auto" />
 	</Sidebar.Content>
 	<Sidebar.Footer>
 		<NavUser user={data.user} />
