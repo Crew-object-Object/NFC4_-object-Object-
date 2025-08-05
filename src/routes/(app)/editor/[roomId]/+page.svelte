@@ -1,4 +1,7 @@
-<script>
+<script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
+	import { page } from '$app/stores';
+	import { useSession } from '$lib/auth-client';
 	import Tiptap from '$lib/components/tiptap.svelte';
 	import { Pane, PaneGroup, PaneResizer } from 'paneforge';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
@@ -8,6 +11,160 @@
 	import FlaskConicalIcon from '@lucide/svelte/icons/flask-conical';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import SendIcon from '@lucide/svelte/icons/send';
+
+	const session = useSession();
+
+	interface Message {
+		messageId: string;
+		content: string;
+		timestamp: string;
+		from: {
+			id: string;
+			name: string;
+			image?: string;
+		};
+	}
+
+	// Chat state
+	let messages: Message[] = [];
+	let newMessage = '';
+	let chatContainer: HTMLDivElement;
+	let isLoading = false;
+	let pollingInterval: NodeJS.Timeout | null = null;
+	let lastMessageCount = 0;
+
+	// Get room ID from URL
+	$: roomId = $page.params.roomId;
+
+	// Fetch messages from API
+	const fetchMessages = async () => {
+		if (!roomId) return;
+		
+		try {
+			const response = await fetch(`/api/messages/${roomId}`);
+			const result = await response.json();
+			
+			if (result.success) {
+				messages = result.data;
+				// Auto-scroll to bottom if new messages arrived
+				if (messages.length > lastMessageCount) {
+					setTimeout(scrollToBottom, 100);
+					lastMessageCount = messages.length;
+				}
+			} else {
+				console.error('Failed to fetch messages:', result.error);
+			}
+		} catch (error) {
+			console.error('Error fetching messages:', error);
+		}
+	};
+
+	// Send a new message
+	const sendMessage = async () => {
+		if (!newMessage.trim() || isLoading || !roomId) return;
+		
+		const messageContent = newMessage.trim();
+		newMessage = '';
+		isLoading = true;
+		
+		try {
+			const response = await fetch(`/api/messages/${roomId}`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					content: messageContent
+				})
+			});
+			
+			const result = await response.json();
+			
+			if (result.success) {
+				// Immediately fetch latest messages to update UI
+				await fetchMessages();
+			} else {
+				console.error('Failed to send message:', result.error);
+				// Restore message on failure
+				newMessage = messageContent;
+			}
+		} catch (error) {
+			console.error('Error sending message:', error);
+			// Restore message on failure
+			newMessage = messageContent;
+		} finally {
+			isLoading = false;
+		}
+	};
+
+	// Handle Enter key press
+	const handleKeyPress = (event: KeyboardEvent) => {
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			sendMessage();
+		}
+	};
+
+	// Scroll to bottom of chat
+	const scrollToBottom = () => {
+		if (chatContainer) {
+			chatContainer.scrollTop = chatContainer.scrollHeight;
+		}
+	};
+
+	// Format timestamp
+	const formatTime = (timestamp: string) => {
+		const date = new Date(timestamp);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffMins = Math.floor(diffMs / (1000 * 60));
+		
+		if (diffMins < 1) return 'Just now';
+		if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+		
+		const diffHours = Math.floor(diffMins / 60);
+		if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+		
+		return date.toLocaleDateString();
+	};
+
+	// Get user initials for avatar
+	const getInitials = (name: string) => {
+		return name
+			?.split(' ')
+			.map((word: string) => word[0])
+			.join('')
+			.toUpperCase()
+			.slice(0, 2) || '?';
+	};
+
+	// Start polling for new messages
+	const startPolling = () => {
+		// Initial fetch
+		fetchMessages();
+		
+		// Poll every 2 seconds
+		pollingInterval = setInterval(fetchMessages, 2000);
+	};
+
+	// Stop polling
+	const stopPolling = () => {
+		if (pollingInterval) {
+			clearInterval(pollingInterval);
+			pollingInterval = null;
+		}
+	};
+
+	onMount(() => {
+		if (roomId) {
+			startPolling();
+		}
+	});
+
+	onDestroy(() => {
+		stopPolling();
+	});
 </script>
 
 <main class="h-px grow px-4 py-0">
@@ -178,45 +335,62 @@
 							<div class="px-4 py-2 border-b flex items-center gap-2">
 								<MessageCircleIcon size={16} />
 								<h3 class="text-sm font-medium">Chat</h3>
+								<span class="text-xs text-muted-foreground">({messages.length})</span>
 							</div>
-							<div class="flex-1 p-4 overflow-y-auto">
-								<div class="space-y-3">
-									<!-- Sample chat messages -->
-									<div class="flex items-start space-x-2">
-										<div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
-											JD
-										</div>
-										<div class="flex-1">
-											<div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-3">
-												<p class="text-sm">Hey, let's collaborate on this document!</p>
-											</div>
-											<p class="text-xs text-slate-500 mt-1">2 minutes ago</p>
-										</div>
+							<div 
+								class="flex-1 p-4 overflow-y-auto" 
+								bind:this={chatContainer}
+							>
+								{#if messages.length === 0}
+									<div class="text-center text-muted-foreground text-sm py-8">
+										<MessageCircleIcon size={32} class="mx-auto mb-2 opacity-50" />
+										<p>No messages yet. Start the conversation!</p>
 									</div>
-									<div class="flex items-start space-x-2">
-										<div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
-											AS
-										</div>
-										<div class="flex-1">
-											<div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-3">
-												<p class="text-sm">Sounds good! I'll start with the introduction.</p>
+								{:else}
+									<div class="space-y-3">
+										{#each messages as message (message.messageId)}
+											<div class="flex items-start space-x-2">
+												<div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-xs font-semibold flex-shrink-0">
+													{getInitials(message.from.name)}
+												</div>
+												<div class="flex-1 min-w-0">
+													<div class="bg-muted rounded-lg p-3">
+														<p class="text-sm break-words">{message.content}</p>
+													</div>
+													<div class="flex items-center gap-2 mt-1">
+														<p class="text-xs text-muted-foreground">{message.from.name}</p>
+														<span class="text-xs text-muted-foreground">•</span>
+														<p class="text-xs text-muted-foreground">{formatTime(message.timestamp)}</p>
+													</div>
+												</div>
 											</div>
-											<p class="text-xs text-slate-500 mt-1">1 minute ago</p>
-										</div>
+										{/each}
 									</div>
-								</div>
+								{/if}
 							</div>
 							<div class="p-4 border-t">
-								<div class="flex space-x-2">
+								<form on:submit|preventDefault={sendMessage} class="flex space-x-2">
 									<input 
 										type="text" 
 										placeholder="Type a message..." 
-										class="flex-1 px-3 py-2 border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+										class="flex-1 px-3 py-2 border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+										bind:value={newMessage}
+										on:keypress={handleKeyPress}
+										disabled={isLoading}
 									/>
-									<button class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90">
+									<button 
+										type="submit"
+										class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+										disabled={isLoading || !newMessage.trim()}
+									>
+										{#if isLoading}
+											<div class="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
+										{:else}
+											<SendIcon size={14} />
+										{/if}
 										Send
 									</button>
-								</div>
+								</form>
 							</div>
 						</div>
 					</Pane>

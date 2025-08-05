@@ -3,6 +3,74 @@ import prisma from '$lib/prisma';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 
+export const GET: RequestHandler = async ({ request, url }) => {
+	try {
+		const session = await auth.api.getSession({
+			headers: request.headers
+		});
+
+		if (!session) {
+			return json(
+				{
+					success: false,
+					error: 'Unauthorized'
+				},
+				{ status: 401 }
+			);
+		}
+
+		const userId = session.user.id;
+		const status = url.searchParams.get('status') || 'PENDING';
+
+		// Get upcoming interviews for the current user
+		const interviews = await prisma.interview.findMany({
+			where: {
+				OR: [
+					{ interviewerId: userId },
+					{ intervieweeId: userId }
+				],
+				status: status === 'ALL' ? undefined : status as any,
+				startTime: {
+					gte: new Date()
+				}
+			},
+			include: {
+				interviewer: {
+					select: {
+						id: true,
+						name: true,
+						email: true
+					}
+				},
+				interviewee: {
+					select: {
+						id: true,
+						name: true,
+						email: true
+					}
+				}
+			},
+			orderBy: {
+				startTime: 'asc'
+			}
+		});
+
+		return json({
+			success: true,
+			data: interviews
+		});
+	} catch (error) {
+		console.error('Error fetching interviews:', error);
+		return json(
+			{
+				success: false,
+				error: 'Internal server error'
+			},
+			{ status: 500 }
+		);
+	}
+};
+
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const body = await request.json();
@@ -113,7 +181,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const interview = await prisma.interview.create({
 			data: {
 				intervieweeId,
-				interviewerId: session?.user.id,
+				interviewerId: session?.user.id!,
 				startTime: startDateTime,
 				endTime: endDateTime,
 				interviewTitle: interviewTitle.trim(),
