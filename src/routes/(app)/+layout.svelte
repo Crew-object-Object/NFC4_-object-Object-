@@ -10,7 +10,7 @@
 
 <Sidebar.Provider>
 	<AppSidebar />
-	<div class="mx-auto flex h-screen w-full max-w-xl flex-col">
+	<div class="mx-auto flex h-screen w-full flex-col">
 		<header
 			class="bg-background/80 sticky top-0 z-50 flex min-h-12 items-center gap-2 px-4 py-2 backdrop-blur-sm"
 		>
