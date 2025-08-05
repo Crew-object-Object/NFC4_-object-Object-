@@ -14,8 +14,9 @@
 
 	const session = authClient.useSession();
 
-	const formatDate = (dateString: string) => {
-		return new Date(dateString).toLocaleDateString('en-US', {
+	const formatDate = (date: Date | string) => {
+		const dateObj = typeof date === 'string' ? new Date(date) : date;
+		return dateObj.toLocaleDateString('en-US', {
 			year: 'numeric',
 			month: 'long',
 			day: 'numeric'
@@ -66,6 +67,11 @@
 								<Mail class="h-4 w-4 text-muted-foreground" />
 								<span class="text-sm">{$session.data.user.email}</span>
 							</div>
+						</div>
+						<Separator />
+						<div class="flex items-center justify-between">
+							<span class="text-sm text-muted-foreground">Role</span>
+							<span class="text-sm font-medium capitalize">{$session.data.user.role}</span>
 						</div>
 						<Separator />
 						<div class="flex items-center justify-between">
