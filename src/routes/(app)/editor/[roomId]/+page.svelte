@@ -24,6 +24,8 @@
 	import type { Problem } from '$lib/problemset';
 	import { browser } from '$app/environment';
 	import { authClient, useSession } from '$lib/auth-client';
+	import { sseClient, type ProblemAddedMessage, type TestCaseAddedMessage } from '$lib/sse-client';
+	import { onMount, onDestroy } from 'svelte';
 
 	interface InterviewProblem {
 		id: string;
@@ -44,6 +46,8 @@
 	let showAddTestCaseDialog = $state(false);
 	let selectedInterviewProblem = $state<InterviewProblem | null>(null);
 	let isLoadingProblems = $state(false);
+	let sseConnected = $state(false);
+	let connectionError = $state('');
 
 	// Get room ID from URL
 	const roomId = $derived($page.params.roomId);
@@ -105,7 +109,6 @@
 			const result = await response.json();
 
 			if (result.success) {
-				await fetchInterviewProblems();
 				showProblemDialog = false;
 			} else {
 				console.error('Failed to add problem:', result.error);
@@ -142,7 +145,6 @@
 			const result = await response.json();
 
 			if (result.success) {
-				await fetchInterviewProblems();
 				showProblemDialog = false;
 			} else {
 				console.error('Failed to add custom problem:', result.error);
@@ -178,7 +180,6 @@
 			const result = await response.json();
 
 			if (result.success) {
-				await fetchInterviewProblems();
 				showAddTestCaseDialog = false;
 				selectedInterviewProblem = null;
 			} else {
@@ -300,6 +301,62 @@
 	// Check if current user is interviewee
 	let isInterviewee = $state(false);
 
+	// Initialize SSE connection for real-time updates
+	const initializeSSE = async () => {
+		if (!roomId) return;
+
+		try {
+			await sseClient.connect(roomId);
+			sseConnected = true;
+			connectionError = '';
+		} catch (error) {
+			console.error('Failed to connect SSE:', error);
+			connectionError = 'Failed to connect';
+			sseConnected = false;
+		}
+	};
+
+	// SSE event handlers
+	const handleProblemAdded = (problem: ProblemAddedMessage) => {
+		const newProblem: InterviewProblem = {
+			id: problem.id,
+			title: problem.title,
+			description: problem.description,
+			score: problem.score,
+			testCases: problem.testCases
+		};
+		interviewProblems = [...interviewProblems, newProblem];
+	};
+
+	const handleTestCaseAdded = (data: TestCaseAddedMessage) => {
+		interviewProblems = interviewProblems.map(problem => {
+			if (problem.id === data.problemId) {
+				return {
+					...problem,
+					testCases: [...problem.testCases, data.testCase]
+				};
+			}
+			return problem;
+		});
+	};
+
+	const handleSSEError = (error: string) => {
+		console.error('SSE error:', error);
+		connectionError = error;
+		sseConnected = false;
+	};
+
+	const handleSSEConnect = () => {
+		sseConnected = true;
+		connectionError = '';
+		console.log('SSE connected');
+	};
+
+	const handleSSEDisconnect = () => {
+		sseConnected = false;
+		console.log('SSE disconnected');
+	};
+
 	$effect(() => {
 		if (!$session.isPending) {
 			isInterviewer = $session.data?.user.role === 'Interviewer';
@@ -313,6 +370,29 @@
 			if (isInterviewer) {
 				fetchAvailableProblems();
 			}
+			initializeSSE();
+		}
+	});
+
+	onMount(() => {
+		const unsubscribeProblemAdded = sseClient.onProblemAdded(handleProblemAdded);
+		const unsubscribeTestCaseAdded = sseClient.onTestCaseAdded(handleTestCaseAdded);
+		const unsubscribeError = sseClient.onError(handleSSEError);
+		const unsubscribeConnect = sseClient.onConnect(handleSSEConnect);
+		const unsubscribeDisconnect = sseClient.onDisconnect(handleSSEDisconnect);
+
+		return () => {
+			unsubscribeProblemAdded();
+			unsubscribeTestCaseAdded();
+			unsubscribeError();
+			unsubscribeConnect();
+			unsubscribeDisconnect();
+		};
+	});
+
+	onDestroy(() => {
+		if (sseConnected) {
+			sseClient.disconnect();
 		}
 	});
 </script>
@@ -368,8 +448,8 @@
 									<FlaskConicalIcon size={16} />
 									<h3 class="text-sm font-medium">Problems & Test Cases</h3>
 								</div>
-								{#if isInterviewer}
-									<div class="flex items-center gap-1">
+								<div class="flex items-center gap-2">
+									{#if isInterviewer}
 										<Button
 											size="sm"
 											variant="outline"
@@ -379,8 +459,24 @@
 											<PlusIcon size={12} class="mr-1" />
 											Add Problem
 										</Button>
+									{/if}
+									<!-- Connection Status -->
+									<div class="flex items-center gap-1">
+										{#if sseConnected}
+											<div class="flex items-center gap-1">
+												<div class="h-2 w-2 rounded-full bg-green-500"></div>
+												<span class="text-xs text-green-600">Live</span>
+											</div>
+										{:else}
+											<div class="flex items-center gap-1">
+												<div class="h-2 w-2 rounded-full bg-red-500"></div>
+												<span class="text-xs text-red-600">
+													{connectionError || 'Offline'}
+												</span>
+											</div>
+										{/if}
 									</div>
-								{/if}
+								</div>
 							</div>
 							<div class="flex-1 overflow-y-auto p-2">
 								{#if interviewProblems.length === 0}
