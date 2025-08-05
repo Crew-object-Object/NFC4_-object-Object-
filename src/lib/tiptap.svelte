@@ -9,13 +9,17 @@
 	import StrikethroughIcon from '@lucide/svelte/icons/strikethrough';
 	import Collaboration from '@tiptap/extension-collaboration';
 	import * as Y from 'yjs';
+	import TiptapCollabProvider from '@tiptap-pro/provider';
+	// import jsonwebtoken from 'jsonwebtoken';
+	import { authClient } from './auth-client';
 
 	let element: HTMLDivElement;
 	let editor = $state<Editor | null>(null);
+	let data = authClient.useSession();
 
-	const doc = new Y.Doc();
-	
 	onMount(() => {
+		const doc = new Y.Doc();
+
 		editor = new Editor({
 			element: element,
 			extensions: [
@@ -46,6 +50,16 @@
 	const isBoldActive = $derived(editor?.isActive('bold') ?? false);
 	const isItalicActive = $derived(editor?.isActive('italic') ?? false);
 	const isStrikeActive = $derived(editor?.isActive('strike') ?? false);
+
+	$effect(() => {
+		if (!$data.data) return;
+		const provider = new TiptapCollabProvider({
+			name: 'document.name',
+			appId: 'jkvv46ek',
+			token: 'notoken',
+			document: doc
+		});
+	});
 </script>
 
 {#if editor}
