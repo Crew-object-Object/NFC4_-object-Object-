@@ -363,15 +363,44 @@
 			isInterviewee = !isInterviewer;
 		}
 	});
+
+	// Setup tab detection when user role is determined and they are an interviewee
+	$effect(() => {
+		if (browser && isInterviewee && roomId) {
+			console.log('Role determined: Setting up tab detection for interviewee');
+			setupTabDetection();
+		}
+	});
 	
 	// Tab switching detection for interviewees
-	let isTabVisible = true;
+	let isTabVisible = $state(true);
+	let isWindowFocused = $state(true);
 	let tabSwitchCount = $state(0);
 	let lastTabSwitchTime = 0;
 	let tabSwitchTimeout: ReturnType<typeof setTimeout> | null = null;
 
+	// Function to send tab switch notification
+	const sendTabSwitchNotification = async () => {
+		if (!roomId || !isInterviewee) return;
+
+		try {
+			// Ensure SSE is connected before sending message
+			if (!sseClient.isConnected) {
+				await sseClient.connect(roomId);
+			}
+
+			tabSwitchCount++;
+			const message = `🚨 ALERT: Interviewee switched tabs/apps (${tabSwitchCount} time${tabSwitchCount > 1 ? 's' : ''})`;
+			await sseClient.sendMessage(message);
+			console.log('Tab switch notification sent:', message);
+		} catch (error) {
+			console.error('Failed to send tab switch notification:', error);
+		}
+	};
+
+	// Handle visibility change (tab switching within browser)
 	const handleVisibilityChange = async () => {
-		if (!browser || !roomId) return;
+		if (!browser || !roomId || !isInterviewee) return;
 
 		const isCurrentlyVisible = !document.hidden;
 		const currentTime = Date.now();
@@ -379,53 +408,98 @@
 		console.log('Visibility change:', {
 			isCurrentlyVisible,
 			isTabVisible,
-			isInterviewee: isInterviewee,
+			isInterviewee,
 			roomId
 		});
 
-		// Only track tab switches for interviewees and when tab becomes hidden
-		if (isInterviewee && isTabVisible && !isCurrentlyVisible) {
-			console.log('Tab switch detected for interviewee');
+		// Only track when tab becomes hidden (user switched away)
+		if (isTabVisible && !isCurrentlyVisible) {
+			console.log('Tab switch detected (visibility)');
 			
-			// Prevent multiple rapid notifications (debounce with 2 seconds)
-			if (currentTime - lastTabSwitchTime < 2000) {
+			// Prevent multiple rapid notifications (debounce with 1 second)
+			if (currentTime - lastTabSwitchTime < 1000) {
 				console.log('Tab switch ignored due to debouncing');
 				return;
 			}
 
-			// Clear any existing timeout
+			lastTabSwitchTime = currentTime;
+			await sendTabSwitchNotification();
+		}
+
+		isTabVisible = isCurrentlyVisible;
+	};
+
+	// Handle window blur (alt+tab, clicking outside browser, etc.)
+	const handleWindowBlur = async () => {
+		if (!browser || !roomId || !isInterviewee) return;
+
+		const currentTime = Date.now();
+
+		console.log('Window blur detected for interviewee');
+
+		// Only track when window loses focus
+		if (isWindowFocused) {
+			// Prevent multiple rapid notifications (debounce with 1 second)
+			if (currentTime - lastTabSwitchTime < 1000) {
+				console.log('Window blur ignored due to debouncing');
+				return;
+			}
+
+			// Use a small timeout to confirm it's a real focus loss
 			if (tabSwitchTimeout) {
 				clearTimeout(tabSwitchTimeout);
 			}
 
 			tabSwitchTimeout = setTimeout(async () => {
-				tabSwitchCount++;
-				lastTabSwitchTime = currentTime;
-
-				console.log(`Interviewee switched tabs (count: ${tabSwitchCount})`);
-
-				try {
-					// Ensure SSE is connected before sending message
-					if (!sseClient.isConnected) {
-						await sseClient.connect(roomId);
-					}
-
-					// Send automatic message through SSE when tab is switched
-					const message = `🚨 ALERT: Interviewee switched tabs (${tabSwitchCount} time${tabSwitchCount > 1 ? 's' : ''})`;
-					await sseClient.sendMessage(message);
-					console.log('Tab switch notification sent:', message);
-				} catch (error) {
-					console.error('Failed to send tab switch notification:', error);
+				// Double check that window is still blurred
+				if (!document.hasFocus()) {
+					lastTabSwitchTime = currentTime;
+					await sendTabSwitchNotification();
 				}
-			}, 500); // 500ms delay to confirm it's a real tab switch
+			}, 200);
 		}
 
-		isTabVisible = isCurrentlyVisible;
+		isWindowFocused = false;
+	};
 
-		// Clear timeout if user returns to tab quickly
-		if (isCurrentlyVisible && tabSwitchTimeout) {
+	// Handle window focus
+	const handleWindowFocus = () => {
+		console.log('Window focus gained');
+		isWindowFocused = true;
+		isTabVisible = true;
+
+		// Clear any pending timeout when focus returns
+		if (tabSwitchTimeout) {
 			clearTimeout(tabSwitchTimeout);
 			tabSwitchTimeout = null;
+		}
+	};
+
+	// Handle keyboard shortcuts that might indicate app switching
+	const handleKeyDown = async (event: KeyboardEvent) => {
+		if (!browser || !roomId || !isInterviewee) return;
+
+		// Detect Alt+Tab (Windows/Linux) or Cmd+Tab (Mac)
+		const isAltTab = event.altKey && event.key === 'Tab';
+		const isCmdTab = event.metaKey && event.key === 'Tab';
+		
+		if (isAltTab || isCmdTab) {
+			console.log('App switching keyboard shortcut detected:', { isAltTab, isCmdTab });
+			
+			const currentTime = Date.now();
+			
+			// Prevent multiple rapid notifications
+			if (currentTime - lastTabSwitchTime < 1000) {
+				return;
+			}
+
+			// Small delay to check if the user actually switched
+			setTimeout(async () => {
+				if (!document.hasFocus()) {
+					lastTabSwitchTime = currentTime;
+					await sendTabSwitchNotification();
+				}
+			}, 300);
 		}
 	};
 
@@ -434,26 +508,25 @@
 		
 		console.log('Setting up tab detection event listeners');
 
-		// Listen for visibility changes (tab switches, window minimizing, etc.)
+		// Listen for visibility changes (tab switches within browser)
 		document.addEventListener('visibilitychange', handleVisibilityChange);
 
-		// Also listen for blur/focus events as additional detection
-		window.addEventListener('blur', () => {
-			if (isInterviewee) {
-				console.log('Window blur detected for interviewee');
-				setTimeout(handleVisibilityChange, 100); // Small delay to ensure proper state
-			}
-		});
+		// Listen for window blur/focus events (alt+tab, clicking outside browser)
+		window.addEventListener('blur', handleWindowBlur);
+		window.addEventListener('focus', handleWindowFocus);
 
-		// Reset tab visible state when gaining focus
-		window.addEventListener('focus', () => {
-			console.log('Window focus gained');
-			isTabVisible = true;
-		});
+		// Listen for keyboard shortcuts
+		document.addEventListener('keydown', handleKeyDown);
+
+		// Initialize states
+		isTabVisible = !document.hidden;
+		isWindowFocused = document.hasFocus();
 	};
 
 	const cleanupTabDetection = () => {
 		if (!browser) return;
+
+		console.log('Cleaning up tab detection event listeners');
 
 		// Clear any pending timeout
 		if (tabSwitchTimeout) {
@@ -461,26 +534,11 @@
 			tabSwitchTimeout = null;
 		}
 
+		// Remove event listeners
 		document.removeEventListener('visibilitychange', handleVisibilityChange);
-		window.removeEventListener('blur', handleVisibilityChange);
-		window.removeEventListener('focus', () => {
-			isTabVisible = true;
-		});
-	};
-
-	// Initialize SSE connection for tab switching notifications
-	const initializeSSEForTabDetection = async () => {
-		if (!roomId || !isInterviewee) return;
-
-		try {
-			if (!sseClient.isConnected) {
-				await sseClient.connect(roomId);
-				sseConnected = true;
-			}
-		} catch (error) {
-			console.error('Failed to connect SSE for tab detection:', error);
-			sseConnected = false;
-		}
+		window.removeEventListener('blur', handleWindowBlur);
+		window.removeEventListener('focus', handleWindowFocus);
+		document.removeEventListener('keydown', handleKeyDown);
 	};
 
 	$effect(() => {
@@ -501,6 +559,7 @@
 	});
 
 	onMount(() => {
+		// Setup SSE event handlers
 		const unsubscribeProblemAdded = sseClient.onProblemAdded(handleProblemAdded);
 		const unsubscribeTestCaseAdded = sseClient.onTestCaseAdded(handleTestCaseAdded);
 		const unsubscribeError = sseClient.onError(handleSSEError);
@@ -517,29 +576,13 @@
 	});
 
 	onDestroy(() => {
-		if (sseConnected) {
-			sseClient.disconnect();
-
-			// Setup tab switching detection for interviewees
-			if (isInterviewee) {
-				console.log('Setting up tab switching detection for interviewee');
-				initializeSSEForTabDetection();
-				setupTabDetection();
-			}
-		}
-	});
-
-	onDestroy(() => {
 		// Cleanup tab detection
 		cleanupTabDetection();
 
-		// Disconnect SSE if we connected it for tab detection
-		if (sseConnected && isInterviewee) {
-			// Note: We don't disconnect SSE here because the chat component might be using it
-			// The chat component will handle SSE disconnection
+		// Disconnect SSE if connected
+		if (sseConnected) {
+			sseClient.disconnect();
 		}
-
-		// Cleanup handled by individual components
 	});
 </script>
 
