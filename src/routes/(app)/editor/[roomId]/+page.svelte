@@ -367,7 +367,6 @@
 	// Tab switching detection for interviewees
 	let isTabVisible = true;
 	let tabSwitchCount = $state(0);
-	let sseConnected = false;
 	let lastTabSwitchTime = 0;
 	let tabSwitchTimeout: ReturnType<typeof setTimeout> | null = null;
 
