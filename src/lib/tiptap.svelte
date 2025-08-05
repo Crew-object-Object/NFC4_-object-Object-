@@ -189,15 +189,17 @@
 
 <div
 	bind:this={element}
-	class="prose min-h-64 max-w-none rounded-md border p-4 dark:prose-invert [&_.ProseMirror]:m-0 [&_.ProseMirror]:border-none [&_.ProseMirror]:p-0 [&_.ProseMirror]:outline-none"
+	class="prose min-h-64 max-w-none rounded-md border p-4 py-0 dark:prose-invert [&_.ProseMirror]:m-0 [&_.ProseMirror]:border-none [&_.ProseMirror]:p-0 [&_.ProseMirror]:outline-none"
 ></div>
 
-<style>
+<style lang="postcss">
 	:global(.ProseMirror) {
 		outline: none !important;
 		border: none !important;
 		padding: 0 !important;
 		margin: 0 !important;
+		margin-top: -0.75rem !important; /* Adjusted for better spacing */
+		margin-bottom: -0.75rem !important; /* Adjusted for better spacing */
 		min-height: inherit;
 	}
 
