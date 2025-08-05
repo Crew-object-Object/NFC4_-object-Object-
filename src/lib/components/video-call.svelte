@@ -74,6 +74,9 @@
 	let maxPositionHistory = 10; // Track last 10 positions for smoothing
 
 	// Baseline measurements (established in first few seconds)
+	let baselineHeadPosition = null;
+	let baselineEyeDirection = null;
+	let calibrationFrames = 0;
 
 	let AgoraRTC: any = null;
 	let client: any = null;
