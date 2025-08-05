@@ -21,9 +21,11 @@
 	interface Props {
 		roomId?: string;
 		onContentChange?: (content: string) => void;
+		isInterviewee?: boolean;
+		onPasteDetected?: () => void;
 	}
 	
-	let { roomId = 'default', onContentChange }: Props = $props();
+	let { roomId = 'default', onContentChange, isInterviewee = false, onPasteDetected }: Props = $props();
 
 	let element: HTMLDivElement;
 	let editor = $state<Editor | null>(null);
@@ -112,6 +114,27 @@
 				if (onContentChange) {
 					const codeContent = getCodeContent();
 					onContentChange(codeContent);
+				}
+			},
+			editorProps: {
+				handlePaste: (view, event, slice) => {
+					// Detect paste events for interviewees
+					if (isInterviewee && onPasteDetected) {
+						const pastedContent = slice.content.textBetween(0, slice.content.size);
+						
+						// Only trigger if substantial content is pasted (more than 10 characters)
+						// This helps avoid false positives for small pastes like single words
+						if (pastedContent.trim().length > 10) {
+							console.log('Paste detected:', {
+								length: pastedContent.length,
+								content: pastedContent.substring(0, 100) + (pastedContent.length > 100 ? '...' : '')
+							});
+							onPasteDetected();
+						}
+					}
+					
+					// Return false to allow default paste behavior
+					return false;
 				}
 			}
 		});

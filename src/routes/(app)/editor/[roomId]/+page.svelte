@@ -379,6 +379,10 @@
 	let lastTabSwitchTime = 0;
 	let tabSwitchTimeout: ReturnType<typeof setTimeout> | null = null;
 
+	// Paste detection for interviewees
+	let pasteCount = $state(0);
+	let lastPasteTime = 0;
+
 	// Function to send tab switch notification
 	const sendTabSwitchNotification = async () => {
 		if (!roomId || !isInterviewee) return;
@@ -395,6 +399,34 @@
 			console.log('Tab switch notification sent:', message);
 		} catch (error) {
 			console.error('Failed to send tab switch notification:', error);
+		}
+	};
+
+	// Function to send paste detection notification
+	const sendPasteNotification = async () => {
+		if (!roomId || !isInterviewee) return;
+
+		const currentTime = Date.now();
+		
+		// Prevent multiple rapid notifications (debounce with 2 seconds)
+		if (currentTime - lastPasteTime < 2000) {
+			console.log('Paste notification ignored due to debouncing');
+			return;
+		}
+
+		try {
+			// Ensure SSE is connected before sending message
+			if (!sseClient.isConnected) {
+				await sseClient.connect(roomId);
+			}
+
+			lastPasteTime = currentTime;
+			pasteCount++;
+			const message = `📋 ALERT: Interviewee pasted content into editor (${pasteCount} time${pasteCount > 1 ? 's' : ''})`;
+			await sseClient.sendMessage(message);
+			console.log('Paste notification sent:', message);
+		} catch (error) {
+			console.error('Failed to send paste notification:', error);
 		}
 	};
 
@@ -599,14 +631,27 @@
 								<div class="flex items-center gap-2">
 									<CodeIcon size={16} />
 									<h3 class="text-sm font-medium">Code Editor</h3>
-									{#if isInterviewee && tabSwitchCount > 0}
-										<Badge
-											variant="outline"
-											class="bg-orange-50 text-xs text-orange-600 dark:bg-orange-950 dark:text-orange-400"
-											title="Number of times you've switched tabs (visible to interviewer)"
-										>
-											Tab switches: {tabSwitchCount}
-										</Badge>
+									{#if isInterviewee && (tabSwitchCount > 0 || pasteCount > 0)}
+										<div class="flex items-center gap-2">
+											{#if tabSwitchCount > 0}
+												<Badge
+													variant="outline"
+													class="bg-orange-50 text-xs text-orange-600 dark:bg-orange-950 dark:text-orange-400"
+													title="Number of times you've switched tabs (visible to interviewer)"
+												>
+													Tab switches: {tabSwitchCount}
+												</Badge>
+											{/if}
+											{#if pasteCount > 0}
+												<Badge
+													variant="outline"
+													class="bg-red-50 text-xs text-red-600 dark:bg-red-950 dark:text-red-400"
+													title="Number of times you've pasted content (visible to interviewer)"
+												>
+													Paste events: {pasteCount}
+												</Badge>
+											{/if}
+										</div>
 									{/if}
 								</div>
 								{#if isInterviewee}
@@ -625,7 +670,12 @@
 								{/if}
 							</div>
 							<div class="flex-1 p-4">
-								<TiptapEditor {roomId} onContentChange={handleCodeChange} />
+								<TiptapEditor 
+									{roomId} 
+									onContentChange={handleCodeChange} 
+									{isInterviewee}
+									onPasteDetected={sendPasteNotification}
+								/>
 							</div>
 						</div>
 					</Pane>
