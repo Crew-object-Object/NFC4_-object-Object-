@@ -363,9 +363,136 @@
 			isInterviewee = !isInterviewer;
 		}
 	});
+	
+	// Tab switching detection for interviewees
+	let isTabVisible = true;
+	let tabSwitchCount = $state(0);
+	let sseConnected = false;
+	let lastTabSwitchTime = 0;
+	let tabSwitchTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	const handleVisibilityChange = async () => {
+		if (!browser || !roomId) return;
+
+		const isCurrentlyVisible = !document.hidden;
+		const currentTime = Date.now();
+
+		console.log('Visibility change:', {
+			isCurrentlyVisible,
+			isTabVisible,
+			isInterviewee: isInterviewee,
+			roomId
+		});
+
+		// Only track tab switches for interviewees and when tab becomes hidden
+		if (isInterviewee && isTabVisible && !isCurrentlyVisible) {
+			console.log('Tab switch detected for interviewee');
+			
+			// Prevent multiple rapid notifications (debounce with 2 seconds)
+			if (currentTime - lastTabSwitchTime < 2000) {
+				console.log('Tab switch ignored due to debouncing');
+				return;
+			}
+
+			// Clear any existing timeout
+			if (tabSwitchTimeout) {
+				clearTimeout(tabSwitchTimeout);
+			}
+
+			tabSwitchTimeout = setTimeout(async () => {
+				tabSwitchCount++;
+				lastTabSwitchTime = currentTime;
+
+				console.log(`Interviewee switched tabs (count: ${tabSwitchCount})`);
+
+				try {
+					// Ensure SSE is connected before sending message
+					if (!sseClient.isConnected) {
+						await sseClient.connect(roomId);
+					}
+
+					// Send automatic message through SSE when tab is switched
+					const message = `🚨 ALERT: Interviewee switched tabs (${tabSwitchCount} time${tabSwitchCount > 1 ? 's' : ''})`;
+					await sseClient.sendMessage(message);
+					console.log('Tab switch notification sent:', message);
+				} catch (error) {
+					console.error('Failed to send tab switch notification:', error);
+				}
+			}, 500); // 500ms delay to confirm it's a real tab switch
+		}
+
+		isTabVisible = isCurrentlyVisible;
+
+		// Clear timeout if user returns to tab quickly
+		if (isCurrentlyVisible && tabSwitchTimeout) {
+			clearTimeout(tabSwitchTimeout);
+			tabSwitchTimeout = null;
+		}
+	};
+
+	const setupTabDetection = () => {
+		if (!browser) return;
+		
+		console.log('Setting up tab detection event listeners');
+
+		// Listen for visibility changes (tab switches, window minimizing, etc.)
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+
+		// Also listen for blur/focus events as additional detection
+		window.addEventListener('blur', () => {
+			if (isInterviewee) {
+				console.log('Window blur detected for interviewee');
+				setTimeout(handleVisibilityChange, 100); // Small delay to ensure proper state
+			}
+		});
+
+		// Reset tab visible state when gaining focus
+		window.addEventListener('focus', () => {
+			console.log('Window focus gained');
+			isTabVisible = true;
+		});
+	};
+
+	const cleanupTabDetection = () => {
+		if (!browser) return;
+
+		// Clear any pending timeout
+		if (tabSwitchTimeout) {
+			clearTimeout(tabSwitchTimeout);
+			tabSwitchTimeout = null;
+		}
+
+		document.removeEventListener('visibilitychange', handleVisibilityChange);
+		window.removeEventListener('blur', handleVisibilityChange);
+		window.removeEventListener('focus', () => {
+			isTabVisible = true;
+		});
+	};
+
+	// Initialize SSE connection for tab switching notifications
+	const initializeSSEForTabDetection = async () => {
+		if (!roomId || !isInterviewee) return;
+
+		try {
+			if (!sseClient.isConnected) {
+				await sseClient.connect(roomId);
+				sseConnected = true;
+			}
+		} catch (error) {
+			console.error('Failed to connect SSE for tab detection:', error);
+			sseConnected = false;
+		}
+	};
 
 	$effect(() => {
 		if (roomId) {
+			// Debug role detection
+			console.log('User role detection:', {
+				isInterviewer: isInterviewer,
+				isInterviewee: isInterviewee,
+				urlParams: browser ? new URLSearchParams(window.location.search).get('role') : null
+			});
+
 			fetchInterviewProblems();
 			if (isInterviewer) {
 				fetchAvailableProblems();
@@ -393,7 +520,27 @@
 	onDestroy(() => {
 		if (sseConnected) {
 			sseClient.disconnect();
+
+			// Setup tab switching detection for interviewees
+			if (isInterviewee) {
+				console.log('Setting up tab switching detection for interviewee');
+				initializeSSEForTabDetection();
+				setupTabDetection();
+			}
 		}
+	});
+
+	onDestroy(() => {
+		// Cleanup tab detection
+		cleanupTabDetection();
+
+		// Disconnect SSE if we connected it for tab detection
+		if (sseConnected && isInterviewee) {
+			// Note: We don't disconnect SSE here because the chat component might be using it
+			// The chat component will handle SSE disconnection
+		}
+
+		// Cleanup handled by individual components
 	});
 </script>
 
@@ -410,6 +557,15 @@
 								<div class="flex items-center gap-2">
 									<CodeIcon size={16} />
 									<h3 class="text-sm font-medium">Code Editor</h3>
+									{#if isInterviewee && tabSwitchCount > 0}
+										<Badge
+											variant="outline"
+											class="bg-orange-50 text-xs text-orange-600 dark:bg-orange-950 dark:text-orange-400"
+											title="Number of times you've switched tabs (visible to interviewer)"
+										>
+											Tab switches: {tabSwitchCount}
+										</Badge>
+									{/if}
 								</div>
 								{#if isInterviewee}
 									<div class="flex items-center gap-2">

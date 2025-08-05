@@ -603,210 +603,214 @@
 			return;
 		}
 
-		// Log first 3 landmarks with their coordinates
-		console.log('🎯 First 3 landmarks:');
-		landmarks.slice(0, 3).forEach((landmark, index) => {
-			console.log(`  Point ${index}:`, {
-				x: landmark.x?.toFixed(4),
-				y: landmark.y?.toFixed(4),
-				z: landmark.z?.toFixed(4)
-			});
+		// Use the new vector-based approach with landmarks 1, 4, and 5
+		const point1 = landmarks[1]; // Nose tip upper
+		const point4 = landmarks[4]; // Nose tip lower  
+		const point5 = landmarks[5]; // Nose base
+
+		if (!point1 || !point4 || !point5) {
+			console.log('❌ Required landmarks (1, 4, 5) not found');
+			return;
+		}
+
+		// Calculate midpoint between landmarks 1 and 5
+		const midpoint = {
+			x: (point1.x + point5.x) / 2,
+			y: (point1.y + point5.y) / 2,
+			z: (point1.z + point5.z) / 2
+		};
+
+		// Create vector from midpoint to point 4
+		const gazeVector = {
+			x: point4.x - midpoint.x,
+			y: point4.y - midpoint.y,
+			z: point4.z - midpoint.z
+		};
+
+		// Calculate vector magnitude for normalization
+		const vectorMagnitude = Math.sqrt(
+			gazeVector.x * gazeVector.x + 
+			gazeVector.y * gazeVector.y + 
+			gazeVector.z * gazeVector.z
+		);
+
+		// Normalize the vector
+		const normalizedVector = {
+			x: gazeVector.x / vectorMagnitude,
+			y: gazeVector.y / vectorMagnitude,
+			z: gazeVector.z / vectorMagnitude
+		};
+
+		console.log('🎯 Gaze vector analysis:', {
+			midpoint: { x: midpoint.x.toFixed(4), y: midpoint.y.toFixed(4), z: midpoint.z.toFixed(4) },
+			point4: { x: point4.x.toFixed(4), y: point4.y.toFixed(4), z: point4.z.toFixed(4) },
+			rawVector: { x: gazeVector.x.toFixed(4), y: gazeVector.y.toFixed(4), z: gazeVector.z.toFixed(4) },
+			normalizedVector: { x: normalizedVector.x.toFixed(4), y: normalizedVector.y.toFixed(4), z: normalizedVector.z.toFixed(4) },
+			magnitude: vectorMagnitude.toFixed(4)
 		});
 
-		// MediaPipe Face Landmarker uses different indices than Face Mesh
-		// Key landmarks for the 478-point model:
-		const noseTip = landmarks[1]; // Nose tip
-		const leftEyeInner = landmarks[133]; // Left eye inner corner
-		const rightEyeInner = landmarks[362]; // Right eye inner corner
-		const leftEyeOuter = landmarks[33]; // Left eye outer corner
-		const rightEyeOuter = landmarks[263]; // Right eye outer corner
-		const chin = landmarks[175]; // Chin center
-
-		console.log('🔎 Key landmarks:', {
-			noseTip: noseTip ? `(${noseTip.x?.toFixed(3)}, ${noseTip.y?.toFixed(3)})` : 'undefined',
-			leftEyeInner: leftEyeInner
-				? `(${leftEyeInner.x?.toFixed(3)}, ${leftEyeInner.y?.toFixed(3)})`
-				: 'undefined',
-			rightEyeInner: rightEyeInner
-				? `(${rightEyeInner.x?.toFixed(3)}, ${rightEyeInner.y?.toFixed(3)})`
-				: 'undefined',
-			chin: chin ? `(${chin.x?.toFixed(3)}, ${chin.y?.toFixed(3)})` : 'undefined'
+		// Add to position history for smoothing
+		const currentTime = Date.now();
+		recentHeadPositions.push({
+			x: normalizedVector.x,
+			y: normalizedVector.y,
+			timestamp: currentTime
 		});
 
-		// Calculate head center and detect movement with enhanced accuracy
-		if (landmarks.length >= 468 && noseTip && leftEyeInner && rightEyeInner) {
-			// Use multiple landmark points for more robust head center calculation
-			const eyeCenter = {
-				x: (leftEyeInner.x + rightEyeInner.x + leftEyeOuter.x + rightEyeOuter.x) / 4,
-				y: (leftEyeInner.y + rightEyeInner.y + leftEyeOuter.y + rightEyeOuter.y) / 4
-			};
+		// Keep only recent positions (last 500ms)
+		recentHeadPositions = recentHeadPositions.filter((pos) => currentTime - pos.timestamp < 500);
 
-			const faceCenter = {
-				x: (eyeCenter.x + noseTip.x) / 2,
-				y: chin ? (eyeCenter.y + noseTip.y + chin.y) / 3 : (eyeCenter.y + noseTip.y) / 2
-			};
+		// Calculate smoothed vector using recent history
+		const smoothedVector = {
+			x: recentHeadPositions.reduce((sum, pos) => sum + pos.x, 0) / recentHeadPositions.length,
+			y: recentHeadPositions.reduce((sum, pos) => sum + pos.y, 0) / recentHeadPositions.length
+		};
 
-			// Add to position history for smoothing
-			const currentTime = Date.now();
-			recentHeadPositions.push({
-				x: faceCenter.x,
-				y: faceCenter.y,
-				timestamp: currentTime
-			});
+		// Define thresholds for acceptable gaze direction
+		const lateralThreshold = 0.15; // Threshold for left/right movement
+		const upwardThreshold = 0.1;   // Threshold for upward movement (more sensitive)
+		const downwardThreshold = 0.25; // Threshold for downward movement (keyboard area)
+		const extremeThreshold = 0.3;   // Threshold for extreme movements
 
-			// Keep only recent positions (last 500ms)
-			recentHeadPositions = recentHeadPositions.filter((pos) => currentTime - pos.timestamp < 500);
+		// Analyze gaze direction based on normalized vector components
+		const isLookingTooFarLeft = smoothedVector.x < -lateralThreshold;
+		const isLookingTooFarRight = smoothedVector.x > lateralThreshold;
+		const isLookingTooFarUp = smoothedVector.y < -upwardThreshold;
+		const isLookingTooFarDown = smoothedVector.y > downwardThreshold;
+		
+		// Extreme movements (clearly away from screen/keyboard area)
+		const isLookingExtremeLeft = smoothedVector.x < -extremeThreshold;
+		const isLookingExtremeRight = smoothedVector.x > extremeThreshold;
+		const isLookingExtremeUp = smoothedVector.y < -extremeThreshold;
+		const isLookingExtremeDown = smoothedVector.y > extremeThreshold + 0.2;
 
-			// Calculate smoothed position using recent history
-			const smoothedPosition = {
-				x: recentHeadPositions.reduce((sum, pos) => sum + pos.x, 0) / recentHeadPositions.length,
-				y: recentHeadPositions.reduce((sum, pos) => sum + pos.y, 0) / recentHeadPositions.length
-			};
-
-			console.log('🎯 Head positions:', {
-				raw: { x: faceCenter.x.toFixed(4), y: faceCenter.y.toFixed(4) },
-				smoothed: { x: smoothedPosition.x.toFixed(4), y: smoothedPosition.y.toFixed(4) },
-				historyCount: recentHeadPositions.length
-			});
-
-			// Enhanced detection logic with better thresholds
-			const horizontalDeviation = Math.abs(smoothedPosition.x - 0.5);
-			const verticalDeviation = Math.abs(smoothedPosition.y - 0.5);
-
-			// More nuanced detection based on actual position ranges
-			const isLookingLeft = smoothedPosition.x < 0.5 - headMovementThreshold;
-			const isLookingRight = smoothedPosition.x > 0.5 + headMovementThreshold;
-			const isLookingExtremeLeft = smoothedPosition.x < 0.5 - extremeLookThreshold;
-			const isLookingExtremeRight = smoothedPosition.x > 0.5 + extremeLookThreshold;
-			const isLookingUp = smoothedPosition.y < 0.5 - upwardLookThreshold;
-			const isLookingDown = smoothedPosition.y > 0.5 + downwardLookThreshold;
-			const isLookingExtremeDown = smoothedPosition.y > 0.5 + 0.4; // Very far down
-
-			// Calculate movement velocity for rapid head turns
-			const movementVelocity =
-				recentHeadPositions.length >= 2
-					? Math.sqrt(
+		// Calculate movement velocity for rapid head turns
+		const movementVelocity =
+			recentHeadPositions.length >= 2
+				? Math.sqrt(
+						Math.pow(
+							recentHeadPositions[recentHeadPositions.length - 1].x - recentHeadPositions[0].x,
+							2
+						) +
 							Math.pow(
-								recentHeadPositions[recentHeadPositions.length - 1].x - recentHeadPositions[0].x,
+								recentHeadPositions[recentHeadPositions.length - 1].y - recentHeadPositions[0].y,
 								2
-							) +
-								Math.pow(
-									recentHeadPositions[recentHeadPositions.length - 1].y - recentHeadPositions[0].y,
-									2
-								)
-						)
-					: 0;
+							)
+					)
+				: 0;
 
-			const isRapidMovement = movementVelocity > 0.15; // Detect quick head turns
+		const isRapidMovement = movementVelocity > 0.2; // Detect quick head turns
 
-			// Intelligent suspicious behavior detection
-			const isSuspiciousBehavior =
-				isLookingExtremeLeft ||
-				isLookingExtremeRight ||
-				isLookingUp ||
-				isLookingExtremeDown ||
-				isRapidMovement ||
-				horizontalDeviation > 0.35 || // Far lateral movement
-				verticalDeviation > 0.4; // Extreme vertical movement
+		// Determine suspicious behavior based on vector analysis
+		const isSuspiciousBehavior =
+			isLookingExtremeLeft ||
+			isLookingExtremeRight ||
+			isLookingExtremeUp ||
+			isLookingExtremeDown ||
+			isLookingTooFarLeft ||
+			isLookingTooFarRight ||
+			isLookingTooFarUp ||
+			isRapidMovement;
 
-			console.log('📊 Enhanced behavior analysis:', {
-				horizontalDev: horizontalDeviation.toFixed(3),
-				verticalDev: verticalDeviation.toFixed(3),
-				velocity: movementVelocity.toFixed(3),
-				isLookingLeft,
-				isLookingRight,
-				isLookingExtremeLeft,
-				isLookingExtremeRight,
-				isLookingUp,
-				isLookingDown,
-				isLookingExtremeDown,
-				isRapidMovement,
-				isSuspiciousBehavior,
-				consecutiveFrames: consecutiveSuspiciousFrames
-			});
+		console.log('📊 Vector-based gaze analysis:', {
+			smoothedVector: { x: smoothedVector.x.toFixed(4), y: smoothedVector.y.toFixed(4) },
+			velocity: movementVelocity.toFixed(4),
+			lookingTooFarLeft: isLookingTooFarLeft,
+			lookingTooFarRight: isLookingTooFarRight,
+			lookingTooFarUp: isLookingTooFarUp,
+			lookingTooFarDown: isLookingTooFarDown,
+			lookingExtremeLeft: isLookingExtremeLeft,
+			lookingExtremeRight: isLookingExtremeRight,
+			lookingExtremeUp: isLookingExtremeUp,
+			lookingExtremeDown: isLookingExtremeDown,
+			rapidMovement: isRapidMovement,
+			isSuspiciousBehavior,
+			consecutiveFrames: consecutiveSuspiciousFrames
+		});
 
-			if (isSuspiciousBehavior) {
-				consecutiveSuspiciousFrames++;
+		if (isSuspiciousBehavior) {
+			consecutiveSuspiciousFrames++;
 
-				// Start timing after fewer consistent frames for better responsiveness
-				if (consecutiveSuspiciousFrames >= requiredSuspiciousFrames) {
-					if (!isLookingAway) {
-						isLookingAway = true;
-						lookAwayStartTime = Date.now();
-						console.log('🚨 Started tracking suspicious behavior');
-					} else {
-						const currentTime = Date.now();
-						const duration = currentTime - lookAwayStartTime;
+			// Start timing after fewer consistent frames for better responsiveness
+			if (consecutiveSuspiciousFrames >= requiredSuspiciousFrames) {
+				if (!isLookingAway) {
+					isLookingAway = true;
+					lookAwayStartTime = Date.now();
+					console.log('🚨 Started tracking suspicious behavior');
+				} else {
+					const currentTime = Date.now();
+					const duration = currentTime - lookAwayStartTime;
 
-						// Notify after shorter duration for better detection
-						if (
-							duration > lookAwayThreshold &&
-							currentTime - lastNotificationTime > notificationCooldown
-						) {
-							let behaviorType = '';
-							let severity = '';
+					// Notify after shorter duration for better detection
+					if (
+						duration > lookAwayThreshold &&
+						currentTime - lastNotificationTime > notificationCooldown
+					) {
+						let behaviorType = '';
+						let severity = '';
 
-							if (isRapidMovement) {
-								behaviorType = 'rapid head movement';
-								severity = 'HIGH';
-							} else if (isLookingExtremeLeft) {
-								behaviorType = 'extreme left turn';
-								severity = 'HIGH';
-							} else if (isLookingExtremeRight) {
-								behaviorType = 'extreme right turn';
-								severity = 'HIGH';
-							} else if (isLookingUp) {
-								behaviorType = 'looking upward';
-								severity = 'HIGH'; // Upward is more suspicious
-							} else if (horizontalDeviation > 0.35) {
-								behaviorType = 'significant lateral movement';
-								severity = 'MEDIUM';
-							} else if (isLookingExtremeDown) {
-								behaviorType = 'looking too far down';
-								severity = 'LOW';
-							} else if (verticalDeviation > 0.4) {
-								behaviorType = 'extreme vertical movement';
-								severity = 'MEDIUM';
-							}
-
-							// Enhanced toast messages with better context
-							if (severity === 'HIGH') {
-								toast.error(
-									`🚨 CRITICAL: Candidate ${behaviorType} for ${(duration / 1000).toFixed(1)}s`
-								);
-							} else if (severity === 'MEDIUM') {
-								toast.warning(
-									`⚠️ SUSPICIOUS: Candidate ${behaviorType} for ${(duration / 1000).toFixed(1)}s`
-								);
-							} else {
-								toast.info(
-									`ℹ️ MONITORING: Prolonged ${behaviorType} - ${(duration / 1000).toFixed(1)}s`
-								);
-							}
-
-							console.log(`🚨 ${severity} behavior detected: ${behaviorType}`, {
-								duration: duration / 1000,
-								rawPosition: faceCenter,
-								smoothedPosition,
-								velocity: movementVelocity,
-								consecutiveFrames: consecutiveSuspiciousFrames
-							});
-
-							lastNotificationTime = currentTime;
+						if (isRapidMovement) {
+							behaviorType = 'rapid head movement';
+							severity = 'HIGH';
+						} else if (isLookingExtremeLeft) {
+							behaviorType = 'looking far left (potential second screen)';
+							severity = 'HIGH';
+						} else if (isLookingExtremeRight) {
+							behaviorType = 'looking far right (potential second screen)';
+							severity = 'HIGH';
+						} else if (isLookingExtremeUp) {
+							behaviorType = 'looking upward (potential notes/ceiling)';
+							severity = 'HIGH';
+						} else if (isLookingExtremeDown) {
+							behaviorType = 'looking too far down (beyond keyboard)';
+							severity = 'MEDIUM';
+						} else if (isLookingTooFarLeft) {
+							behaviorType = 'looking left of screen';
+							severity = 'MEDIUM';
+						} else if (isLookingTooFarRight) {
+							behaviorType = 'looking right of screen';
+							severity = 'MEDIUM';
+						} else if (isLookingTooFarUp) {
+							behaviorType = 'looking above screen';
+							severity = 'MEDIUM';
 						}
+
+						// Enhanced toast messages with better context
+						if (severity === 'HIGH') {
+							toast.error(
+								`🚨 CRITICAL: Candidate ${behaviorType} for ${(duration / 1000).toFixed(1)}s`
+							);
+						} else if (severity === 'MEDIUM') {
+							toast.warning(
+								`⚠️ SUSPICIOUS: Candidate ${behaviorType} for ${(duration / 1000).toFixed(1)}s`
+							);
+						} else {
+							toast.info(
+								`ℹ️ MONITORING: Prolonged ${behaviorType} - ${(duration / 1000).toFixed(1)}s`
+							);
+						}
+
+						console.log(`🚨 ${severity} behavior detected: ${behaviorType}`, {
+							duration: duration / 1000,
+							vectorComponents: smoothedVector,
+							velocity: movementVelocity,
+							consecutiveFrames: consecutiveSuspiciousFrames
+						});
+
+						lastNotificationTime = currentTime;
 					}
 				}
-			} else {
-				// Reset counters when behavior returns to normal
-				if (consecutiveSuspiciousFrames > 0) {
-					console.log(
-						`✅ Behavior normalized after ${consecutiveSuspiciousFrames} suspicious frames`
-					);
-				}
-				consecutiveSuspiciousFrames = 0;
-				isLookingAway = false;
-				lookAwayStartTime = 0;
 			}
+		} else {
+			// Reset counters when behavior returns to normal
+			if (consecutiveSuspiciousFrames > 0) {
+				console.log(
+					`✅ Gaze returned to acceptable range after ${consecutiveSuspiciousFrames} suspicious frames`
+				);
+			}
+			consecutiveSuspiciousFrames = 0;
+			isLookingAway = false;
+			lookAwayStartTime = 0;
 		}
 	}
 
