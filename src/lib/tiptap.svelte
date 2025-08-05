@@ -7,7 +7,11 @@
 	import BoldIcon from '@lucide/svelte/icons/bold';
 	import ItalicIcon from '@lucide/svelte/icons/italic';
 	import StrikethroughIcon from '@lucide/svelte/icons/strikethrough';
+	import CodeIcon from '@lucide/svelte/icons/code';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import Collaboration from '@tiptap/extension-collaboration';
+	import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+	import { common, createLowlight } from 'lowlight';
 	import * as Y from 'yjs';
 	import TiptapCollabProvider from '@tiptap-pro/provider';
 	// import jsonwebtoken from 'jsonwebtoken';
@@ -16,14 +20,48 @@
 	let element: HTMLDivElement;
 	let editor = $state<Editor | null>(null);
 	let data = authClient.useSession();
+	const doc = new Y.Doc();
+	const lowlight = createLowlight(common);
+
+	// Language state management
+	let selectedLanguage = $state<string>('plaintext');
+	
+	// Available languages for syntax highlighting
+	const availableLanguages = [
+		{ value: 'plaintext', label: 'Plain Text' },
+		{ value: 'javascript', label: 'JavaScript' },
+		{ value: 'typescript', label: 'TypeScript' },
+		{ value: 'python', label: 'Python' },
+		{ value: 'html', label: 'HTML' },
+		{ value: 'css', label: 'CSS' },
+		{ value: 'json', label: 'JSON' },
+		{ value: 'markdown', label: 'Markdown' },
+		{ value: 'bash', label: 'Bash' },
+		{ value: 'sql', label: 'SQL' },
+		{ value: 'xml', label: 'XML' },
+		{ value: 'yaml', label: 'YAML' },
+		{ value: 'dockerfile', label: 'Dockerfile' },
+		{ value: 'go', label: 'Go' },
+		{ value: 'rust', label: 'Rust' },
+		{ value: 'java', label: 'Java' },
+		{ value: 'php', label: 'PHP' },
+		{ value: 'ruby', label: 'Ruby' },
+		{ value: 'cpp', label: 'C++' },
+		{ value: 'c', label: 'C' }
+	];
 
 	onMount(() => {
-		const doc = new Y.Doc();
 
 		editor = new Editor({
 			element: element,
 			extensions: [
-				StarterKit,
+				StarterKit.configure({
+					codeBlock: false, // Disable default code block to use CodeBlockLowlight
+				}),
+				CodeBlockLowlight.configure({
+					lowlight,
+					defaultLanguage: selectedLanguage,
+				}),
 				Collaboration.configure({
 					document: doc // Configure Y.Doc for collaboration
 				})
@@ -44,12 +82,28 @@
 	});
 
 	// Reactive getters for active states
-	const isH1Active = $derived(editor?.isActive('heading', { level: 1 }) ?? false);
-	const isH2Active = $derived(editor?.isActive('heading', { level: 2 }) ?? false);
-	const isParagraphActive = $derived(editor?.isActive('paragraph') ?? false);
 	const isBoldActive = $derived(editor?.isActive('bold') ?? false);
 	const isItalicActive = $derived(editor?.isActive('italic') ?? false);
 	const isStrikeActive = $derived(editor?.isActive('strike') ?? false);
+	const isCodeBlockActive = $derived(editor?.isActive('codeBlock') ?? false);
+
+	// Function to handle language change
+	function handleLanguageChange(value: string) {
+		selectedLanguage = value;
+		if (editor && isCodeBlockActive) {
+			editor.chain().focus().updateAttributes('codeBlock', { language: value }).run();
+		}
+	}
+
+	// Update selected language when code block selection changes
+	$effect(() => {
+		if (editor && isCodeBlockActive) {
+			const attrs = editor.getAttributes('codeBlock');
+			if (attrs.language && attrs.language !== selectedLanguage) {
+				selectedLanguage = attrs.language;
+			}
+		}
+	});
 
 	$effect(() => {
 		if (!$data.data) return;
@@ -64,35 +118,38 @@
 
 {#if editor}
 	<div class="flex items-center gap-1 p-2">
-		<!-- Text Format Toggles -->
+		<!-- Code Block Toggle -->
 		<div class="flex items-center gap-1">
 			<Toggle
-				pressed={isH1Active}
-				onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
+				pressed={isCodeBlockActive}
+				onclick={() => editor?.chain().focus().toggleCodeBlock().run()}
 				variant="outline"
 				size="sm"
-				aria-label="Toggle heading 1"
+				aria-label="Toggle code block"
 			>
-				H1
+				<CodeIcon size={16} />
 			</Toggle>
-			<Toggle
-				pressed={isH2Active}
-				onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-				variant="outline"
-				size="sm"
-				aria-label="Toggle heading 2"
-			>
-				H2
-			</Toggle>
-			<Toggle
-				pressed={isParagraphActive}
-				onclick={() => editor?.chain().focus().setParagraph().run()}
-				variant="outline"
-				size="sm"
-				aria-label="Set paragraph"
-			>
-				P
-			</Toggle>
+			
+			{#if isCodeBlockActive}
+				<Select.Root
+					type="single"
+					value={selectedLanguage}
+					onValueChange={handleLanguageChange}
+				>
+					<Select.Trigger class="h-8 w-[140px] text-xs">
+						<span class="truncate">
+							{availableLanguages.find(lang => lang.value === selectedLanguage)?.label || 'Select Language'}
+						</span>
+					</Select.Trigger>
+					<Select.Content class="max-h-[200px]">
+						{#each availableLanguages as language}
+							<Select.Item value={language.value}>
+								{language.label}
+							</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+			{/if}
 		</div>
 
 		<Separator orientation="vertical" class="h-6" />
@@ -132,15 +189,17 @@
 
 <div
 	bind:this={element}
-	class="prose min-h-64 max-w-none rounded-md border p-4 dark:prose-invert [&_.ProseMirror]:m-0 [&_.ProseMirror]:border-none [&_.ProseMirror]:p-0 [&_.ProseMirror]:outline-none"
+	class="prose min-h-64 max-w-none rounded-md border p-4 py-0 dark:prose-invert [&_.ProseMirror]:m-0 [&_.ProseMirror]:border-none [&_.ProseMirror]:p-0 [&_.ProseMirror]:outline-none"
 ></div>
 
-<style>
+<style lang="postcss">
 	:global(.ProseMirror) {
 		outline: none !important;
 		border: none !important;
 		padding: 0 !important;
 		margin: 0 !important;
+		margin-top: -0.75rem !important; /* Adjusted for better spacing */
+		margin-bottom: -0.75rem !important; /* Adjusted for better spacing */
 		min-height: inherit;
 	}
 
@@ -148,5 +207,131 @@
 		outline: none !important;
 		box-shadow: none !important;
 		border: none !important;
+	}
+
+	/* Syntax highlighting styles */
+	:global(.ProseMirror pre) {
+		background: hsl(var(--muted));
+		border-radius: 0.5rem;
+		color: hsl(var(--muted-foreground));
+		font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+		padding: 0.75rem 1rem;
+		white-space: pre-wrap;
+	}
+
+	:global(.ProseMirror pre code) {
+		background: none;
+		color: inherit;
+		font-size: 0.8rem;
+		padding: 0;
+	}
+
+	/* Highlight.js token styles */
+	:global(.hljs-comment),
+	:global(.hljs-quote) {
+		color: #6a737d;
+		font-style: italic;
+	}
+
+	:global(.hljs-keyword),
+	:global(.hljs-selector-tag),
+	:global(.hljs-addition) {
+		color: #d73a49;
+	}
+
+	:global(.hljs-number),
+	:global(.hljs-string),
+	:global(.hljs-meta .hljs-meta-string),
+	:global(.hljs-literal),
+	:global(.hljs-doctag),
+	:global(.hljs-regexp) {
+		color: #032f62;
+	}
+
+	:global(.hljs-title),
+	:global(.hljs-section),
+	:global(.hljs-name),
+	:global(.hljs-selector-id),
+	:global(.hljs-selector-class) {
+		color: #6f42c1;
+	}
+
+	:global(.hljs-attribute),
+	:global(.hljs-attr),
+	:global(.hljs-variable),
+	:global(.hljs-template-variable),
+	:global(.hljs-class .hljs-title),
+	:global(.hljs-type) {
+		color: #e36209;
+	}
+
+	:global(.hljs-symbol),
+	:global(.hljs-bullet),
+	:global(.hljs-subst),
+	:global(.hljs-meta),
+	:global(.hljs-meta .hljs-keyword),
+	:global(.hljs-selector-attr),
+	:global(.hljs-selector-pseudo),
+	:global(.hljs-link) {
+		color: #005cc5;
+	}
+
+	:global(.hljs-built_in),
+	:global(.hljs-deletion) {
+		color: #b31d28;
+	}
+
+	/* Dark mode adjustments */
+	:global(.dark .hljs-comment),
+	:global(.dark .hljs-quote) {
+		color: #8b949e;
+	}
+
+	:global(.dark .hljs-keyword),
+	:global(.dark .hljs-selector-tag),
+	:global(.dark .hljs-addition) {
+		color: #ff7b72;
+	}
+
+	:global(.dark .hljs-number),
+	:global(.dark .hljs-string),
+	:global(.dark .hljs-meta .hljs-meta-string),
+	:global(.dark .hljs-literal),
+	:global(.dark .hljs-doctag),
+	:global(.dark .hljs-regexp) {
+		color: #a5d6ff;
+	}
+
+	:global(.dark .hljs-title),
+	:global(.dark .hljs-section),
+	:global(.dark .hljs-name),
+	:global(.dark .hljs-selector-id),
+	:global(.dark .hljs-selector-class) {
+		color: #d2a8ff;
+	}
+
+	:global(.dark .hljs-attribute),
+	:global(.dark .hljs-attr),
+	:global(.dark .hljs-variable),
+	:global(.dark .hljs-template-variable),
+	:global(.dark .hljs-class .hljs-title),
+	:global(.dark .hljs-type) {
+		color: #ffa657;
+	}
+
+	:global(.dark .hljs-symbol),
+	:global(.dark .hljs-bullet),
+	:global(.dark .hljs-subst),
+	:global(.dark .hljs-meta),
+	:global(.dark .hljs-meta .hljs-keyword),
+	:global(.dark .hljs-selector-attr),
+	:global(.dark .hljs-selector-pseudo),
+	:global(.dark .hljs-link) {
+		color: #79c0ff;
+	}
+
+	:global(.dark .hljs-built_in),
+	:global(.dark .hljs-deletion) {
+		color: #ffa198;
 	}
 </style>

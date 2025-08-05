@@ -5,7 +5,7 @@
 	import GripHorizontalIcon from '@lucide/svelte/icons/grip-horizontal';
 </script>
 
-<main class="h-screen p-4">
+<main class="h-px grow p-4">
 	<div class="h-full border rounded-lg overflow-hidden">
 		<PaneGroup direction="horizontal">
 			<!-- Editor Section -->
