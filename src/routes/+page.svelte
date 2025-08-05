@@ -163,9 +163,9 @@
 					{#if $session.isPending}
 						<Skeleton class="h-[60px] w-[240px] rounded-lg" />
 					{:else if $session.data?.user}
-						<Button size="lg" class="px-8 py-6 text-lg" onclick={handleContinueToDashboard}>
-							<ArrowRight class="mr-3 size-5" />
+						<Button size="lg" class="px-6 py-6 text-lg" onclick={handleContinueToDashboard}>
 							Continue to Dashboard
+							<ArrowRight class="mr-3 size-5" />
 						</Button>
 					{:else}
 						<Button
