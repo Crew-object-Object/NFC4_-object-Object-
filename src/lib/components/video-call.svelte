@@ -32,6 +32,7 @@
 	const userRole = $derived($session.data?.user?.role);
 	const isInterviewer = $derived(userRole === 'Interviewer');
 	const isInterviewee = $derived(userRole === 'Interviewee');
+	const role = $derived(userRole?.toLowerCase());
 
 	let isMuted = $state(false);
 	let isJoining = $state(false);
@@ -52,11 +53,27 @@
 	let isEyeTrackingActive = $state(false);
 	let isEyeTrackingInitializing = $state(false);
 	let eyeTrackingError = $state<string | null>(null);
-	let webGazer: any = null;
-	let gazeData: { x: number; y: number; timestamp: number }[] = $state([]);
-	let currentGaze = $state<{ x: number; y: number } | null>(null);
-	let eyeTrackingOverlay: HTMLCanvasElement | null = null;
 	let animationFrameId: number | null = null;
+	let faceLandmarker: any = null;
+	let lastVideoTime = -1;
+	let processingCanvas: HTMLCanvasElement;
+
+	// Cheating detection states - Enhanced for coding interviews and low light
+	let isLookingAway = $state(false);
+	let lookAwayStartTime = 0;
+	let lookAwayThreshold = 3000; // 3 seconds - reduced for better responsiveness
+	let headMovementThreshold = 0.2; // More sensitive for lateral movement
+	let downwardLookThreshold = 0.3; // Slightly reduced for better detection
+	let extremeLookThreshold = 0.3; // More sensitive extreme detection
+	let upwardLookThreshold = 0.2; // Detect upward looking more accurately
+	let lastNotificationTime = 0;
+	let notificationCooldown = 5000; // 5 seconds between notifications
+	let consecutiveSuspiciousFrames = 0;
+	let requiredSuspiciousFrames = 20; // ~0.7 seconds of consistent behavior
+	let recentHeadPositions: Array<{ x: number; y: number; timestamp: number }> = [];
+	let maxPositionHistory = 10; // Track last 10 positions for smoothing
+
+	// Baseline measurements (established in first few seconds)
 
 	let AgoraRTC: any = null;
 	let client: any = null;
@@ -69,27 +86,23 @@
 
 	async function checkPermissions() {
 		try {
-			checkingPermissions = true;
+			// checkingPermissions = true;
 			permissionError = null;
 
-			// Check if browser supports media devices
 			if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
 				throw new Error('Your browser does not support camera/microphone access');
 			}
 
-			// Request permissions
 			const stream = await navigator.mediaDevices.getUserMedia({
 				video: true,
 				audio: true
 			});
 
-			// Stop the test stream
 			stream.getTracks().forEach((track) => track.stop());
 
 			permissionGranted = true;
 			checkingPermissions = false;
 
-			// Initialize Agora after permissions are granted
 			const AgoraModule = await import('agora-rtc-sdk-ng');
 			AgoraRTC = AgoraModule.default;
 			AgoraRTC.setLogLevel(2);
@@ -125,8 +138,7 @@
 
 	async function cleanup() {
 		try {
-			// Stop eye tracking if active
-			if (isEyeTrackingActive && webGazer) {
+			if (isEyeTrackingActive && faceLandmarker) {
 				await stopEyeTracking();
 			}
 
@@ -232,7 +244,6 @@
 			client.on('user-left', (user: IAgoraRTCRemoteUser) => {
 				users = users.filter((u) => u.uid !== user.uid);
 
-				// Stop eye tracking if the tracked user left
 				if (isEyeTrackingActive && users.length === 0) {
 					stopEyeTracking();
 				}
@@ -311,7 +322,6 @@
 					retryCount++;
 					console.error(`Connection attempt ${retryCount} failed:`, err);
 
-					// Clean up current connection attempt before retrying
 					try {
 						if (client && client.connectionState !== 'DISCONNECTED') {
 							await client.leave();
@@ -385,11 +395,6 @@
 		}
 	}
 
-	async function endCall() {
-		await cleanup();
-		toast.success('Call ended');
-	}
-
 	async function retryConnection() {
 		error = null;
 		permissionError = null;
@@ -400,6 +405,11 @@
 
 	// Eye tracking functions
 	async function startEyeTracking() {
+		console.log('startEyeTracking called');
+		console.log('isInterviewer:', isInterviewer);
+		console.log('users.length:', users.length);
+		console.log('remoteCameraOff:', remoteCameraOff);
+
 		if (!isInterviewer || users.length === 0) {
 			toast.error('Eye tracking is only available for interviewers when an interviewee is present');
 			return;
@@ -413,88 +423,78 @@
 		try {
 			isEyeTrackingInitializing = true;
 			eyeTrackingError = null;
-			gazeData = [];
 
 			// Get the remote video element
 			const remoteUser = users[0];
-			const remoteVideoElement = document.getElementById(String(remoteUser.uid)) as HTMLVideoElement;
-			
-			if (!remoteVideoElement) {
-				throw new Error('Remote video element not found');
-			}
+			console.log('Remote user:', remoteUser);
 
-			// Load WebGazer if not already loaded
-			if (!webGazer) {
-				const script = document.createElement('script');
-				script.src = 'https://webgazer.cs.brown.edu/webgazer.js';
-				script.async = true;
+			// Wait for video element to be available
+			let remoteVideoElement: HTMLVideoElement | null = null;
+			let attempts = 0;
+			const maxAttempts = 20;
 
-				await new Promise((resolve, reject) => {
-					script.onload = resolve;
-					script.onerror = reject;
-					document.head.appendChild(script);
-				});
-
-				// @ts-ignore
-				webGazer = window.webgazer;
-			}
-
-			if (!webGazer) {
-				throw new Error('Failed to load WebGazer library');
-			}
-
-			// Configure WebGazer to use the remote video stream
-			webGazer
-				.setRegression('ridge')
-				.setTracker('clmtrackr')
-				.showPredictionPoints(false)
-				.showFaceOverlay(false)
-				.showFaceFeedbackBox(false)
-				.showVideo(false);
-
-			// Set the video source to the remote video element
-			webGazer.params.videoElementWebgazer = remoteVideoElement;
-
-			// Set up gaze listener to analyze the remote video
-			await webGazer
-				.setGazeListener((data: { x: number; y: number } | null) => {
-					if (data && remoteVideoElement) {
-						// Convert gaze coordinates relative to the remote video element
-						const videoRect = remoteVideoElement.getBoundingClientRect();
-						const relativeX = data.x - videoRect.left;
-						const relativeY = data.y - videoRect.top;
-						
-						currentGaze = { x: relativeX, y: relativeY };
-
-						// Add to history (keep last 100 points)
-						gazeData.push({
-							x: relativeX,
-							y: relativeY,
-							timestamp: Date.now()
-						});
-
-						if (gazeData.length > 100) {
-							gazeData = gazeData.slice(-100);
-						}
-
-						// Check if gaze is within the remote video bounds
-						const isLookingAtVideo = relativeX >= 0 && relativeX <= videoRect.width && 
-							relativeY >= 0 && relativeY <= videoRect.height;
-
-						// Log gaze coordinates for debugging
-						console.log(`Remote Video Gaze: X=${Math.round(relativeX)}, Y=${Math.round(relativeY)}, Looking at video: ${isLookingAtVideo}`);
-						
-						// You can add warnings here if the person looks away
-						if (!isLookingAtVideo) {
-							console.warn('Interviewee looking away from video area');
-						}
+			while (!remoteVideoElement && attempts < maxAttempts) {
+				const containerElement = document.getElementById(String(remoteUser.uid));
+				if (containerElement) {
+					// Look for video element inside the container
+					const videoElement = containerElement.querySelector('video') as HTMLVideoElement;
+					if (videoElement && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+						remoteVideoElement = videoElement;
+						console.log('Found video element inside container');
+					} else {
+						console.log(`Attempt ${attempts + 1}: Video element not ready, waiting...`);
+						await new Promise((resolve) => setTimeout(resolve, 100));
+						attempts++;
 					}
-				})
-				.begin();
+				} else {
+					console.log(`Attempt ${attempts + 1}: Container not found, waiting...`);
+					await new Promise((resolve) => setTimeout(resolve, 100));
+					attempts++;
+				}
+			}
 
+			console.log('Remote video element:', remoteVideoElement);
+			if (remoteVideoElement) {
+				console.log('Video element properties:', {
+					videoWidth: remoteVideoElement.videoWidth,
+					videoHeight: remoteVideoElement.videoHeight,
+					currentTime: remoteVideoElement.currentTime,
+					readyState: remoteVideoElement.readyState
+				});
+			}
+
+			if (!remoteVideoElement) {
+				throw new Error('Remote video element not found after waiting');
+			}
+
+			// Load MediaPipe Face Landmarker
+			console.log('Loading MediaPipe library...');
+			await loadMediaPipeLibrary();
+
+			if (!faceLandmarker) {
+				throw new Error('Failed to initialize MediaPipe Face Landmarker');
+			}
+
+			// Reset tracking state for enhanced coding interview detection
+			baselineHeadPosition = null;
+			baselineEyeDirection = null;
+			calibrationFrames = 0;
+			isLookingAway = false;
+			lookAwayStartTime = 0;
+			lastNotificationTime = 0;
+			consecutiveSuspiciousFrames = 0;
+			recentHeadPositions = [];
+
+			// Set tracking active BEFORE starting the loop
 			isEyeTrackingActive = true;
+
+			console.log('Starting face tracking...');
+			// Start face tracking loop
+			startFaceTracking(remoteVideoElement);
+
 			isEyeTrackingInitializing = false;
-			toast.success('Eye tracking started - analyzing remote video feed');
+			toast.success('Eye tracking started - monitoring for cheating behavior');
+			console.log('Eye tracking started successfully');
 		} catch (err) {
 			console.error('Error starting eye tracking:', err);
 			isEyeTrackingInitializing = false;
@@ -503,27 +503,327 @@
 		}
 	}
 
-	async function stopEyeTracking() {
+	async function loadMediaPipeLibrary() {
 		try {
-			if (webGazer) {
-				await webGazer.end();
+			// Use the installed MediaPipe Tasks Vision instead of CDN
+			const { FilesetResolver, FaceLandmarker } = await import('@mediapipe/tasks-vision');
+
+			console.log('Loading MediaPipe Vision Tasks...');
+
+			// Initialize the vision tasks
+			const vision = await FilesetResolver.forVisionTasks(
+				'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
+			);
+
+			console.log('Creating Face Landmarker...');
+
+			// Create face landmarker
+			faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+				baseOptions: {
+					modelAssetPath:
+						'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+					delegate: 'GPU'
+				},
+				runningMode: 'VIDEO',
+				outputFaceBlendshapes: false,
+				outputFacialTransformationMatrixes: false,
+				numFaces: 1
+			});
+
+			console.log('MediaPipe Face Landmarker loaded successfully');
+		} catch (error) {
+			console.error('Failed to load MediaPipe:', error);
+			throw new Error('Failed to load MediaPipe library');
+		}
+	}
+
+	function startFaceTracking(videoElement: HTMLVideoElement) {
+		if (!faceLandmarker) {
+			console.log('No faceLandmarker available');
+			return;
+		}
+
+		console.log('Starting face tracking with video element:', videoElement);
+		console.log('Video dimensions:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+		console.log('isEyeTrackingActive at start:', isEyeTrackingActive);
+
+		function detectFace() {
+			if (!isEyeTrackingActive || !faceLandmarker) {
+				console.log(
+					'Eye tracking inactive or no faceLandmarker. Active:',
+					isEyeTrackingActive,
+					'Landmarker:',
+					!!faceLandmarker
+				);
+				return;
 			}
 
-			// Stop drawing loop
+			const currentTime = videoElement.currentTime;
+			if (
+				currentTime !== lastVideoTime &&
+				videoElement.videoWidth > 0 &&
+				videoElement.videoHeight > 0
+			) {
+				lastVideoTime = currentTime;
+				console.log('🎬 Processing video frame at time:', currentTime.toFixed(3));
+
+				try {
+					// Use the new MediaPipe Tasks API
+					const results = faceLandmarker.detectForVideo(videoElement, Date.now());
+					console.log('🔄 MediaPipe results received:', results);
+
+					if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+						console.log('✅ Face landmarks detected, processing...');
+						processFaceLandmarks(results.faceLandmarks[0]);
+					} else {
+						console.log('❌ No face landmarks in results');
+					}
+				} catch (error) {
+					console.error('Face detection error:', error);
+				}
+			}
+
+			// Continue the loop every frame
+			animationFrameId = requestAnimationFrame(detectFace);
+		}
+
+		console.log('🚀 Starting detection loop with isEyeTrackingActive:', isEyeTrackingActive);
+		detectFace();
+	}
+
+	function processFaceLandmarks(landmarks: any[]) {
+		console.log('🔍 Face landmarks detected at', new Date().toLocaleTimeString());
+		console.log('📊 Total landmarks count:', landmarks ? landmarks.length : 'null');
+
+		if (!landmarks || landmarks.length === 0) {
+			console.log('❌ No landmarks detected');
+			return;
+		}
+
+		// Log first 3 landmarks with their coordinates
+		console.log('🎯 First 3 landmarks:');
+		landmarks.slice(0, 3).forEach((landmark, index) => {
+			console.log(`  Point ${index}:`, {
+				x: landmark.x?.toFixed(4),
+				y: landmark.y?.toFixed(4),
+				z: landmark.z?.toFixed(4)
+			});
+		});
+
+		// MediaPipe Face Landmarker uses different indices than Face Mesh
+		// Key landmarks for the 478-point model:
+		const noseTip = landmarks[1]; // Nose tip
+		const leftEyeInner = landmarks[133]; // Left eye inner corner
+		const rightEyeInner = landmarks[362]; // Right eye inner corner
+		const leftEyeOuter = landmarks[33]; // Left eye outer corner
+		const rightEyeOuter = landmarks[263]; // Right eye outer corner
+		const chin = landmarks[175]; // Chin center
+
+		console.log('🔎 Key landmarks:', {
+			noseTip: noseTip ? `(${noseTip.x?.toFixed(3)}, ${noseTip.y?.toFixed(3)})` : 'undefined',
+			leftEyeInner: leftEyeInner
+				? `(${leftEyeInner.x?.toFixed(3)}, ${leftEyeInner.y?.toFixed(3)})`
+				: 'undefined',
+			rightEyeInner: rightEyeInner
+				? `(${rightEyeInner.x?.toFixed(3)}, ${rightEyeInner.y?.toFixed(3)})`
+				: 'undefined',
+			chin: chin ? `(${chin.x?.toFixed(3)}, ${chin.y?.toFixed(3)})` : 'undefined'
+		});
+
+		// Calculate head center and detect movement with enhanced accuracy
+		if (landmarks.length >= 468 && noseTip && leftEyeInner && rightEyeInner) {
+			// Use multiple landmark points for more robust head center calculation
+			const eyeCenter = {
+				x: (leftEyeInner.x + rightEyeInner.x + leftEyeOuter.x + rightEyeOuter.x) / 4,
+				y: (leftEyeInner.y + rightEyeInner.y + leftEyeOuter.y + rightEyeOuter.y) / 4
+			};
+
+			const faceCenter = {
+				x: (eyeCenter.x + noseTip.x) / 2,
+				y: chin ? (eyeCenter.y + noseTip.y + chin.y) / 3 : (eyeCenter.y + noseTip.y) / 2
+			};
+
+			// Add to position history for smoothing
+			const currentTime = Date.now();
+			recentHeadPositions.push({
+				x: faceCenter.x,
+				y: faceCenter.y,
+				timestamp: currentTime
+			});
+
+			// Keep only recent positions (last 500ms)
+			recentHeadPositions = recentHeadPositions.filter((pos) => currentTime - pos.timestamp < 500);
+
+			// Calculate smoothed position using recent history
+			const smoothedPosition = {
+				x: recentHeadPositions.reduce((sum, pos) => sum + pos.x, 0) / recentHeadPositions.length,
+				y: recentHeadPositions.reduce((sum, pos) => sum + pos.y, 0) / recentHeadPositions.length
+			};
+
+			console.log('🎯 Head positions:', {
+				raw: { x: faceCenter.x.toFixed(4), y: faceCenter.y.toFixed(4) },
+				smoothed: { x: smoothedPosition.x.toFixed(4), y: smoothedPosition.y.toFixed(4) },
+				historyCount: recentHeadPositions.length
+			});
+
+			// Enhanced detection logic with better thresholds
+			const horizontalDeviation = Math.abs(smoothedPosition.x - 0.5);
+			const verticalDeviation = Math.abs(smoothedPosition.y - 0.5);
+
+			// More nuanced detection based on actual position ranges
+			const isLookingLeft = smoothedPosition.x < 0.5 - headMovementThreshold;
+			const isLookingRight = smoothedPosition.x > 0.5 + headMovementThreshold;
+			const isLookingExtremeLeft = smoothedPosition.x < 0.5 - extremeLookThreshold;
+			const isLookingExtremeRight = smoothedPosition.x > 0.5 + extremeLookThreshold;
+			const isLookingUp = smoothedPosition.y < 0.5 - upwardLookThreshold;
+			const isLookingDown = smoothedPosition.y > 0.5 + downwardLookThreshold;
+			const isLookingExtremeDown = smoothedPosition.y > 0.5 + 0.4; // Very far down
+
+			// Calculate movement velocity for rapid head turns
+			const movementVelocity =
+				recentHeadPositions.length >= 2
+					? Math.sqrt(
+							Math.pow(
+								recentHeadPositions[recentHeadPositions.length - 1].x - recentHeadPositions[0].x,
+								2
+							) +
+								Math.pow(
+									recentHeadPositions[recentHeadPositions.length - 1].y - recentHeadPositions[0].y,
+									2
+								)
+						)
+					: 0;
+
+			const isRapidMovement = movementVelocity > 0.15; // Detect quick head turns
+
+			// Intelligent suspicious behavior detection
+			const isSuspiciousBehavior =
+				isLookingExtremeLeft ||
+				isLookingExtremeRight ||
+				isLookingUp ||
+				isLookingExtremeDown ||
+				isRapidMovement ||
+				horizontalDeviation > 0.35 || // Far lateral movement
+				verticalDeviation > 0.4; // Extreme vertical movement
+
+			console.log('📊 Enhanced behavior analysis:', {
+				horizontalDev: horizontalDeviation.toFixed(3),
+				verticalDev: verticalDeviation.toFixed(3),
+				velocity: movementVelocity.toFixed(3),
+				isLookingLeft,
+				isLookingRight,
+				isLookingExtremeLeft,
+				isLookingExtremeRight,
+				isLookingUp,
+				isLookingDown,
+				isLookingExtremeDown,
+				isRapidMovement,
+				isSuspiciousBehavior,
+				consecutiveFrames: consecutiveSuspiciousFrames
+			});
+
+			if (isSuspiciousBehavior) {
+				consecutiveSuspiciousFrames++;
+
+				// Start timing after fewer consistent frames for better responsiveness
+				if (consecutiveSuspiciousFrames >= requiredSuspiciousFrames) {
+					if (!isLookingAway) {
+						isLookingAway = true;
+						lookAwayStartTime = Date.now();
+						console.log('🚨 Started tracking suspicious behavior');
+					} else {
+						const currentTime = Date.now();
+						const duration = currentTime - lookAwayStartTime;
+
+						// Notify after shorter duration for better detection
+						if (
+							duration > lookAwayThreshold &&
+							currentTime - lastNotificationTime > notificationCooldown
+						) {
+							let behaviorType = '';
+							let severity = '';
+
+							if (isRapidMovement) {
+								behaviorType = 'rapid head movement';
+								severity = 'HIGH';
+							} else if (isLookingExtremeLeft) {
+								behaviorType = 'extreme left turn';
+								severity = 'HIGH';
+							} else if (isLookingExtremeRight) {
+								behaviorType = 'extreme right turn';
+								severity = 'HIGH';
+							} else if (isLookingUp) {
+								behaviorType = 'looking upward';
+								severity = 'HIGH'; // Upward is more suspicious
+							} else if (horizontalDeviation > 0.35) {
+								behaviorType = 'significant lateral movement';
+								severity = 'MEDIUM';
+							} else if (isLookingExtremeDown) {
+								behaviorType = 'looking too far down';
+								severity = 'LOW';
+							} else if (verticalDeviation > 0.4) {
+								behaviorType = 'extreme vertical movement';
+								severity = 'MEDIUM';
+							}
+
+							// Enhanced toast messages with better context
+							if (severity === 'HIGH') {
+								toast.error(
+									`🚨 CRITICAL: Candidate ${behaviorType} for ${(duration / 1000).toFixed(1)}s`
+								);
+							} else if (severity === 'MEDIUM') {
+								toast.warning(
+									`⚠️ SUSPICIOUS: Candidate ${behaviorType} for ${(duration / 1000).toFixed(1)}s`
+								);
+							} else {
+								toast.info(
+									`ℹ️ MONITORING: Prolonged ${behaviorType} - ${(duration / 1000).toFixed(1)}s`
+								);
+							}
+
+							console.log(`🚨 ${severity} behavior detected: ${behaviorType}`, {
+								duration: duration / 1000,
+								rawPosition: faceCenter,
+								smoothedPosition,
+								velocity: movementVelocity,
+								consecutiveFrames: consecutiveSuspiciousFrames
+							});
+
+							lastNotificationTime = currentTime;
+						}
+					}
+				}
+			} else {
+				// Reset counters when behavior returns to normal
+				if (consecutiveSuspiciousFrames > 0) {
+					console.log(
+						`✅ Behavior normalized after ${consecutiveSuspiciousFrames} suspicious frames`
+					);
+				}
+				consecutiveSuspiciousFrames = 0;
+				isLookingAway = false;
+				lookAwayStartTime = 0;
+			}
+		}
+	}
+
+	async function stopEyeTracking() {
+		try {
+			// Stop animation frame
 			if (animationFrameId) {
 				cancelAnimationFrame(animationFrameId);
 				animationFrameId = null;
 			}
 
-			// Remove overlay
-			if (eyeTrackingOverlay) {
-				eyeTrackingOverlay.remove();
-				eyeTrackingOverlay = null;
-			}
-
-			// Reset tracking data
-			gazeData = [];
-			currentGaze = null;
+			// Reset tracking data for enhanced detection
+			baselineHeadPosition = null;
+			baselineEyeDirection = null;
+			calibrationFrames = 0;
+			isLookingAway = false;
+			lookAwayStartTime = 0;
+			lastNotificationTime = 0;
+			consecutiveSuspiciousFrames = 0;
+			recentHeadPositions = [];
 
 			isEyeTrackingActive = false;
 			eyeTrackingError = null;
@@ -746,11 +1046,8 @@
 						<div class="absolute top-6 left-6">
 							<div class="rounded-lg bg-blue-500/90 px-3 py-2 backdrop-blur-sm">
 								<span class="flex items-center gap-2 text-sm text-white">
-									<Eye class="h-4 w-4" />
-									Eye tracking active
-									{#if currentGaze}
-										- X: {Math.round(currentGaze.x)}, Y: {Math.round(currentGaze.y)}
-									{/if}
+									<div class="h-2 w-2 animate-pulse rounded-full bg-green-400"></div>
+									Face Tracking Active
 								</span>
 							</div>
 						</div>
@@ -824,38 +1121,52 @@
 						{/if}
 					</Button>
 
-					<Button
-						size="lg"
-						variant={isEyeTrackingActive ? 'secondary' : 'outline'}
-						onclick={isEyeTrackingActive ? stopEyeTracking : startEyeTracking}
-						class="h-14 w-14 rounded-full"
-					>
-						<Eye class="h-6 w-6" />
-					</Button>
+					{#if role === 'interviewer'}
+						<Button
+							size="lg"
+							variant={isEyeTrackingActive ? 'secondary' : 'outline'}
+							onclick={isEyeTrackingActive ? stopEyeTracking : startEyeTracking}
+							class="h-14 w-14 rounded-full"
+							title={isEyeTrackingActive ? 'Stop Eye Tracking' : 'Start Eye Tracking'}
+						>
+							{#if isEyeTrackingActive}
+								<EyeOff class="h-6 w-6" />
+							{:else}
+								<Eye class="h-6 w-6" />
+							{/if}
+						</Button>
+					{/if}
 				</div>
 			</div>
 		</div>
 	{/if}
+
+	<!-- Hidden canvas for MediaPipe processing -->
+	<canvas bind:this={processingCanvas} class="hidden" width="640" height="480"></canvas>
 </div>
 
 // ...existing code...
 
 <style>
-	/* Hide any WebGazer video elements that might appear */
-	:global(#webgazerVideoFeed) {
-		display: none !important;
-	}
-
-	:global(#webgazerFaceOverlay) {
-		display: none !important;
-	}
-
-	:global(#webgazerFaceFeedbackBox) {
-		display: none !important;
+	/* Eye tracking overlay styling */
+	:global(.eye-tracking-overlay) {
+		position: absolute !important;
+		pointer-events: none !important;
+		z-index: 10 !important;
 	}
 
 	/* Prevent picture-in-picture */
 	:global(video::-webkit-media-controls-picture-in-picture-button) {
 		display: none !important;
+	}
+
+	/* Hidden elements */
+	.hidden {
+		display: none !important;
+	}
+
+	/* Calibration progress bar */
+	.calibration-progress {
+		transition: width 0.3s ease-in-out;
 	}
 </style>
