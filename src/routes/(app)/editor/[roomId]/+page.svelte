@@ -1,13 +1,16 @@
 <script>
 	import Tiptap from '$lib/components/tiptap.svelte';
+	import VideoCall from '$lib/components/video-call.svelte';
 	import { Pane, PaneGroup, PaneResizer } from 'paneforge';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
 	import GripHorizontalIcon from '@lucide/svelte/icons/grip-horizontal';
-	import VideoIcon from '@lucide/svelte/icons/video';
 	import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
 	import FlaskConicalIcon from '@lucide/svelte/icons/flask-conical';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import { page } from '$app/stores';
+
+	$: roomId = $page.params.roomId;
 </script>
 
 <main class="h-px grow px-4 py-0">
@@ -150,20 +153,7 @@
 				<PaneGroup direction="vertical">
 					<!-- Video Section -->
 					<Pane defaultSize={50} minSize={25}>
-						<div class="bg-background h-full flex flex-col">
-							<div class="px-4 py-2 border-b flex items-center gap-2">
-								<VideoIcon size={16} />
-								<h3 class="text-sm font-medium">Video Call</h3>
-							</div>
-							<div class="flex-1 bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-								<div class="text-center text-slate-500">
-									<svg class="w-16 h-16 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-									</svg>
-									<p class="text-sm">Video call placeholder</p>
-								</div>
-							</div>
-						</div>
+						<VideoCall {roomId} />
 					</Pane>
 
 					<PaneResizer class="h-2 bg-border hover:bg-accent transition-colors flex items-center justify-center group">

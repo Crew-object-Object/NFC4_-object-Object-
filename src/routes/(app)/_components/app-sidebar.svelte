@@ -1,7 +1,6 @@
 <script lang="ts">
 	import {
 		Code,
-		EditIcon,
 		UserIcon,
 		LogInIcon,
 		HistoryIcon,
@@ -22,7 +21,6 @@
 			label: 'Main',
 			items: [
 				{ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboardIcon },
-				{ label: 'Editor', href: '/editor', icon: EditIcon },
 				{ label: 'History', href: '/history', icon: HistoryIcon },
 				{ label: 'Profile', href: '/profile', icon: UserIcon }
 			]
