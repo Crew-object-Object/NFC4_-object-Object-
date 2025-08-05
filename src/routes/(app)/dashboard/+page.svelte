@@ -2,16 +2,10 @@
 	import { onMount } from 'svelte';
 	import { useSession } from '$lib/auth-client';
 	import { Button } from '$lib/components/ui/button';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card';
+	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { Calendar, Clock, User, Plus } from 'lucide-svelte';
+	import { Avatar, AvatarFallback, AvatarImage } from '$lib/components/ui/avatar';
+	import { Calendar, Clock, User, Plus, Video, ArrowRight } from 'lucide-svelte';
 
 	const session = useSession();
 
@@ -35,9 +29,9 @@
 		};
 	}
 
-	let interviews: Interview[] = [];
-	let loading = true;
-	let error: string | null = null;
+	let interviews = $state<Interview[]>([]);
+	let loading = $state(true);
+	let error = $state<string | null>(null);
 
 	const fetchInterviews = async () => {
 		try {
@@ -46,7 +40,11 @@
 			const result = await response.json();
 
 			if (result.success) {
-				interviews = result.data;
+				const now = new Date();
+				interviews = result.data.filter(
+					(interview: Interview) =>
+						interview.status === 'PENDING' && new Date(interview.startTime) > now
+				);
 			} else {
 				error = result.error || 'Failed to fetch interviews';
 			}
@@ -59,9 +57,19 @@
 	};
 
 	const formatDate = (dateString: string) => {
-		return new Date(dateString).toLocaleDateString('en-US', {
+		const date = new Date(dateString);
+		const today = new Date();
+		const tomorrow = new Date(today);
+		tomorrow.setDate(tomorrow.getDate() + 1);
+
+		if (date.toDateString() === today.toDateString()) {
+			return 'Today';
+		} else if (date.toDateString() === tomorrow.toDateString()) {
+			return 'Tomorrow';
+		}
+
+		return date.toLocaleDateString('en-US', {
 			weekday: 'short',
-			year: 'numeric',
 			month: 'short',
 			day: 'numeric'
 		});
@@ -72,6 +80,23 @@
 			hour: '2-digit',
 			minute: '2-digit'
 		});
+	};
+
+	const getTimeUntilInterview = (dateString: string) => {
+		const now = new Date();
+		const interviewTime = new Date(dateString);
+		const diffMs = interviewTime.getTime() - now.getTime();
+		const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+		const diffDays = Math.floor(diffHours / 24);
+
+		if (diffDays > 0) {
+			return `in ${diffDays} day${diffDays > 1 ? 's' : ''}`;
+		} else if (diffHours > 0) {
+			return `in ${diffHours} hour${diffHours > 1 ? 's' : ''}`;
+		} else {
+			const diffMinutes = Math.floor(diffMs / (1000 * 60));
+			return `in ${diffMinutes} min${diffMinutes !== 1 ? 's' : ''}`;
+		}
 	};
 
 	const isInterviewer = (user: any) => {
@@ -86,134 +111,207 @@
 		return interview.interviewer.id === userId ? interview.interviewee : interview.interviewer;
 	};
 
+	const getInitials = (name: string) => {
+		return name
+			.split(' ')
+			.map((n) => n[0])
+			.join('')
+			.toUpperCase();
+	};
+
 	onMount(() => {
 		fetchInterviews();
 	});
 </script>
 
-<div class="container mx-auto p-6 space-y-6">
-	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-3xl font-bold">Dashboard</h1>
-			<p class="text-muted-foreground">
-				Welcome back! Here's an overview of your upcoming interviews.
-			</p>
-		</div>
-		
-		{#if $session.data?.user && isInterviewer($session.data.user)}
-			<Button href="/create-interview" class="flex items-center gap-2">
-				<Plus class="h-4 w-4" />
-				Create Interview
-			</Button>
-		{/if}
-	</div>
+<div class="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+	<div class="container mx-auto space-y-6 p-4">
+		<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+			<div class="space-y-1">
+				<h1
+					class="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-2xl font-bold tracking-tight text-transparent"
+				>
+					Dashboard
+				</h1>
+				<p class="text-sm text-muted-foreground">Your upcoming interviews at a glance</p>
+			</div>
 
-	<div class="grid gap-6">
-		<Card>
-			<CardHeader>
-				<CardTitle class="flex items-center gap-2">
-					<Calendar class="h-5 w-5" />
-					Upcoming Interviews
-				</CardTitle>
-				<CardDescription>
-					Your scheduled interviews for the coming days
-				</CardDescription>
-			</CardHeader>
-			<CardContent>
-				{#if loading}
-					<div class="space-y-4">
-						{#each Array(3) as _}
-							<div class="flex items-center space-x-4 p-4 border rounded-lg">
-								<Skeleton class="h-12 w-12 rounded-full" />
-								<div class="space-y-2 flex-1">
-									<Skeleton class="h-4 w-[250px]" />
-									<Skeleton class="h-4 w-[200px]" />
+			{#if $session.data?.user && isInterviewer($session.data.user)}
+				<Button
+					href="/create-interview"
+					size="sm"
+					class="flex items-center gap-2 bg-primary shadow-md hover:bg-primary/90"
+				>
+					<Plus class="h-3 w-3" />
+					Schedule Interview
+				</Button>
+			{/if}
+		</div>
+
+		<div class="grid gap-4">
+			{#if loading}
+				<Card class="border-0 bg-gradient-to-br from-card to-card/50 shadow-lg backdrop-blur-sm">
+					<CardHeader class="pb-2">
+						<CardTitle class="flex items-center gap-2 text-lg">
+							<div class="rounded-md bg-primary/10 p-1.5">
+								<Calendar class="h-4 w-4 text-primary" />
+							</div>
+							Upcoming Interviews
+						</CardTitle>
+					</CardHeader>
+					<CardContent class="space-y-3">
+						{#each Array(2) as _}
+							<div
+								class="flex animate-pulse items-center space-x-3 rounded-lg border border-border/50 bg-background/50 p-4 backdrop-blur-sm"
+							>
+								<div class="h-10 w-10 rounded-full bg-muted"></div>
+								<div class="flex-1 space-y-2">
+									<div class="h-3 w-48 rounded bg-muted"></div>
+									<div class="h-2 w-32 rounded bg-muted"></div>
 								</div>
-								<Skeleton class="h-8 w-20" />
+								<div class="h-6 w-16 rounded bg-muted"></div>
 							</div>
 						{/each}
-					</div>
-				{:else if error}
-					<div class="text-center py-8">
-						<p class="text-destructive mb-4">{error}</p>
-						<Button variant="outline" onclick={fetchInterviews}>
+					</CardContent>
+				</Card>
+			{:else if error}
+				<Card class="border-0 bg-gradient-to-br from-destructive/5 to-destructive/10 shadow-lg">
+					<CardContent class="py-8 text-center">
+						<div class="mx-auto mb-3 w-fit rounded-full bg-destructive/10 p-2">
+							<Calendar class="h-6 w-6 text-destructive" />
+						</div>
+						<h3 class="mb-2 text-base font-semibold">Unable to load interviews</h3>
+						<p class="mb-4 text-sm text-muted-foreground">{error}</p>
+						<Button variant="outline" size="sm" onclick={fetchInterviews} class="gap-2">
+							<ArrowRight class="h-3 w-3" />
 							Try Again
 						</Button>
-					</div>
-				{:else if interviews.length === 0}
-					<div class="text-center py-8">
-						<Calendar class="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-						<h3 class="text-lg font-semibold mb-2">No upcoming interviews</h3>
-						<p class="text-muted-foreground mb-4">
+					</CardContent>
+				</Card>
+			{:else if interviews.length === 0}
+				<Card class="border-0 bg-gradient-to-br from-card to-card/50 shadow-lg backdrop-blur-sm">
+					<CardContent class="py-12 text-center">
+						<div class="mx-auto mb-4 w-fit rounded-full bg-muted/50 p-3">
+							<Calendar class="h-8 w-8 text-muted-foreground" />
+						</div>
+						<h3 class="mb-2 text-lg font-semibold">No upcoming interviews</h3>
+						<p class="mx-auto mb-6 max-w-sm text-sm text-muted-foreground">
 							{#if $session.data?.user && isInterviewer($session.data.user)}
-								Create your first interview to get started.
+								Ready to schedule your next interview? Create one to get started.
 							{:else}
-								Your upcoming interviews will appear here.
+								Your scheduled interviews will appear here when available.
 							{/if}
 						</p>
 						{#if $session.data?.user && isInterviewer($session.data.user)}
-							<Button href="/create-interview" variant="outline">
-								<Plus class="h-4 w-4 mr-2" />
-								Create Interview
+							<Button
+								href="/create-interview"
+								size="sm"
+								class="gap-2 bg-primary shadow-md hover:bg-primary/90"
+							>
+								<Plus class="h-3 w-3" />
+								Schedule Interview
 							</Button>
 						{/if}
-					</div>
-				{:else}
-					<div class="space-y-4">
+					</CardContent>
+				</Card>
+			{:else}
+				<Card class="border-0 bg-gradient-to-br from-card to-card/50 shadow-lg backdrop-blur-sm">
+					<CardHeader class="pb-2">
+						<CardTitle class="flex items-center gap-2 text-lg">
+							<div class="rounded-md bg-primary/10 p-1.5">
+								<Calendar class="h-4 w-4 text-primary" />
+							</div>
+							Upcoming Interviews
+							<Badge variant="secondary" class="ml-auto text-xs">
+								{interviews.length}
+							</Badge>
+						</CardTitle>
+					</CardHeader>
+					<CardContent class="space-y-3">
 						{#each interviews as interview}
-							<Card class="border-l-4 border-l-primary">
-								<CardContent class="p-4">
-									<div class="flex items-start justify-between">
-										<div class="space-y-2 flex-1">
-											<div class="flex items-center gap-3">
-												<h3 class="font-semibold text-lg">{interview.interviewTitle}</h3>
-												<Badge variant={interview.status === 'PENDING' ? 'default' : 'secondary'}>
-													{interview.status}
-												</Badge>
-											</div>
-											
-											<p class="text-muted-foreground text-sm">
-												{interview.interviewDescription}
-											</p>
-											
-											<div class="flex items-center gap-4 text-sm text-muted-foreground">
-												<div class="flex items-center gap-1">
-													<Calendar class="h-4 w-4" />
-													{formatDate(interview.startTime)}
+							<Card
+								class="group border border-border/50 bg-gradient-to-r from-background to-background/80 transition-all duration-300 hover:shadow-md"
+							>
+								<CardContent>
+									<div class="flex items-start justify-between gap-3">
+										<div class="flex flex-1 items-start gap-3">
+											<Avatar class="h-10 w-10 border-2 border-primary/20">
+												<AvatarImage
+													src=""
+													alt={getOtherParticipant(interview, $session.data?.user?.id || '').name}
+												/>
+												<AvatarFallback class="bg-primary/10 text-xs font-semibold text-primary">
+													{getInitials(
+														getOtherParticipant(interview, $session.data?.user?.id || '').name
+													)}
+												</AvatarFallback>
+											</Avatar>
+
+											<div class="flex-1 space-y-2">
+												<div class="flex items-start justify-between">
+													<div>
+														<h3
+															class="text-base font-semibold leading-tight transition-colors group-hover:text-primary"
+														>
+															{interview.interviewTitle}
+														</h3>
+														<p class="mt-0.5 text-xs text-muted-foreground">
+															{interview.interviewDescription}
+														</p>
+													</div>
+													<Badge
+														variant="outline"
+														class="shrink-0 border-primary/20 bg-primary/5 text-xs text-primary"
+													>
+														{getTimeUntilInterview(interview.startTime)}
+													</Badge>
 												</div>
-												<div class="flex items-center gap-1">
-													<Clock class="h-4 w-4" />
-													{formatTime(interview.startTime)} - {formatTime(interview.endTime)}
-												</div>
-												<div class="flex items-center gap-1">
-													<User class="h-4 w-4" />
-													{#if $session.data?.user}
-														{getUserRole(interview, $session.data.user.id) === 'interviewer' ? 'Interviewing' : 'Interview with'}
-														{getOtherParticipant(interview, $session.data.user.id).name}
-													{/if}
+
+												<div class="flex flex-wrap items-center gap-3 text-xs">
+													<div class="flex items-center gap-1.5 text-muted-foreground">
+														<Calendar class="h-3 w-3" />
+														<span class="font-medium">{formatDate(interview.startTime)}</span>
+													</div>
+													<div class="flex items-center gap-1.5 text-muted-foreground">
+														<Clock class="h-3 w-3" />
+														<span
+															>{formatTime(interview.startTime)} - {formatTime(
+																interview.endTime
+															)}</span
+														>
+													</div>
+													<div class="flex items-center gap-1.5 text-muted-foreground">
+														<User class="h-3 w-3" />
+														<span>
+															{#if $session.data?.user}
+																{getUserRole(interview, $session.data.user.id) === 'interviewer'
+																	? 'Interviewing'
+																	: 'Interview with'}
+																<span class="font-medium text-foreground">
+																	{getOtherParticipant(interview, $session.data.user.id).name}
+																</span>
+															{/if}
+														</span>
+													</div>
 												</div>
 											</div>
 										</div>
-										
-										<div class="flex flex-col gap-2">
-											{#if interview.status === 'PENDING'}
-												<Button 
-													href="/editor/{interview.roomId}" 
-													size="sm"
-													class="w-full"
-												>
-													Join Interview
-												</Button>
-											{/if}
-										</div>
+
+										<Button
+											href="/editor/{interview.roomId}"
+											size="sm"
+											class="gap-1.5 bg-primary shadow-sm transition-all group-hover:shadow-md hover:bg-primary/90"
+										>
+											<Video class="h-3 w-3" />
+											Join Interview
+										</Button>
 									</div>
 								</CardContent>
 							</Card>
 						{/each}
-					</div>
-				{/if}
-			</CardContent>
-		</Card>
+					</CardContent>
+				</Card>
+			{/if}
+		</div>
 	</div>
 </div>
-
