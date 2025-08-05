@@ -2,6 +2,7 @@ import { auth } from '$lib/auth';
 import prisma from '$lib/prisma';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
+import { broadcastToRoom } from '$lib/sse-manager';
 
 // GET /api/interviews/[roomId]/problems - Get problems for an interview
 export const GET: RequestHandler = async ({ request, params }) => {
@@ -147,6 +148,24 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				testCases: true
 			}
 		});
+
+		// Broadcast to SSE clients
+		if (roomId) {
+			broadcastToRoom(roomId, {
+				type: 'problemAdded',
+				data: {
+					id: problem.id,
+					title: problem.title,
+					description: problem.description,
+					score: problem.score,
+					testCases: problem.testCases.map(tc => ({
+						testCaseId: tc.testCaseId,
+						input: tc.input,
+						output: tc.output
+					}))
+				}
+			});
+		}
 
 		return json({
 			success: true,

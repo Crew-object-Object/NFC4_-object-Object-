@@ -2,6 +2,7 @@ import { auth } from '$lib/auth';
 import prisma from '$lib/prisma';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
+import { broadcastToRoom } from '$lib/sse-manager';
 
 // POST /api/problems/[problemId]/testcases - Add a test case to a problem
 export const POST: RequestHandler = async ({ request, params }) => {

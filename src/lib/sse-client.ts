@@ -1,5 +1,5 @@
 export interface SSEMessage {
-	type: 'connected' | 'message' | 'error';
+	type: 'connected' | 'message' | 'error' | 'problemAdded' | 'testCaseAdded';
 	roomId?: string;
 	data?: {
 		messageId: string;
@@ -9,6 +9,23 @@ export interface SSEMessage {
 			id: string;
 			name: string;
 			image?: string;
+		};
+	} | {
+		id: string;
+		title: string;
+		description: string;
+		score: number;
+		testCases: {
+			testCaseId: string;
+			input: string;
+			output: string;
+		}[];
+	} | {
+		problemId: string;
+		testCase: {
+			testCaseId: string;
+			input: string;
+			output: string;
 		};
 	};
 	error?: string;
@@ -25,7 +42,30 @@ export interface ChatMessage {
 	};
 }
 
+export interface ProblemAddedMessage {
+	id: string;
+	title: string;
+	description: string;
+	score: number;
+	testCases: {
+		testCaseId: string;
+		input: string;
+		output: string;
+	}[];
+}
+
+export interface TestCaseAddedMessage {
+	problemId: string;
+	testCase: {
+		testCaseId: string;
+		input: string;
+		output: string;
+	};
+}
+
 type MessageHandler = (message: ChatMessage) => void;
+type ProblemAddedHandler = (problem: ProblemAddedMessage) => void;
+type TestCaseAddedHandler = (data: TestCaseAddedMessage) => void;
 type ErrorHandler = (error: string) => void;
 type ConnectionHandler = () => void;
 
@@ -38,6 +78,8 @@ export class SSEClient {
 	private isConnecting = false;
 
 	private messageHandlers: MessageHandler[] = [];
+	private problemAddedHandlers: ProblemAddedHandler[] = [];
+	private testCaseAddedHandlers: TestCaseAddedHandler[] = [];
 	private errorHandlers: ErrorHandler[] = [];
 	private connectHandlers: ConnectionHandler[] = [];
 	private disconnectHandlers: ConnectionHandler[] = [];
@@ -137,7 +179,17 @@ export class SSEClient {
 				break;
 			case 'message':
 				if (message.data) {
-					this.messageHandlers.forEach(handler => handler(message.data!));
+					this.messageHandlers.forEach(handler => handler(message.data as ChatMessage));
+				}
+				break;
+			case 'problemAdded':
+				if (message.data) {
+					this.problemAddedHandlers.forEach(handler => handler(message.data as ProblemAddedMessage));
+				}
+				break;
+			case 'testCaseAdded':
+				if (message.data) {
+					this.testCaseAddedHandlers.forEach(handler => handler(message.data as TestCaseAddedMessage));
 				}
 				break;
 			case 'error':
@@ -193,6 +245,26 @@ export class SSEClient {
 			const index = this.messageHandlers.indexOf(handler);
 			if (index > -1) {
 				this.messageHandlers.splice(index, 1);
+			}
+		};
+	}
+
+	onProblemAdded(handler: ProblemAddedHandler) {
+		this.problemAddedHandlers.push(handler);
+		return () => {
+			const index = this.problemAddedHandlers.indexOf(handler);
+			if (index > -1) {
+				this.problemAddedHandlers.splice(index, 1);
+			}
+		};
+	}
+
+	onTestCaseAdded(handler: TestCaseAddedHandler) {
+		this.testCaseAddedHandlers.push(handler);
+		return () => {
+			const index = this.testCaseAddedHandlers.indexOf(handler);
+			if (index > -1) {
+				this.testCaseAddedHandlers.splice(index, 1);
 			}
 		};
 	}

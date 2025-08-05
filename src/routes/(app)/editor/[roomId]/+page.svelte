@@ -24,6 +24,8 @@
 	import type { Problem } from '$lib/problemset';
 	import { browser } from '$app/environment';
 	import { authClient, useSession } from '$lib/auth-client';
+	import { sseClient, type ProblemAddedMessage, type TestCaseAddedMessage } from '$lib/sse-client';
+	import { onMount, onDestroy } from 'svelte';
 
 	interface InterviewProblem {
 		id: string;
@@ -44,6 +46,8 @@
 	let showAddTestCaseDialog = $state(false);
 	let selectedInterviewProblem = $state<InterviewProblem | null>(null);
 	let isLoadingProblems = $state(false);
+	let sseConnected = $state(false);
+	let connectionError = $state('');
 
 	// Get room ID from URL
 	const roomId = $derived($page.params.roomId);
@@ -105,7 +109,6 @@
 			const result = await response.json();
 
 			if (result.success) {
-				await fetchInterviewProblems();
 				showProblemDialog = false;
 			} else {
 				console.error('Failed to add problem:', result.error);
@@ -142,7 +145,6 @@
 			const result = await response.json();
 
 			if (result.success) {
-				await fetchInterviewProblems();
 				showProblemDialog = false;
 			} else {
 				console.error('Failed to add custom problem:', result.error);
@@ -178,7 +180,6 @@
 			const result = await response.json();
 
 			if (result.success) {
-				await fetchInterviewProblems();
 				showAddTestCaseDialog = false;
 				selectedInterviewProblem = null;
 			} else {
@@ -300,6 +301,62 @@
 	// Check if current user is interviewee
 	let isInterviewee = $state(false);
 
+	// Initialize SSE connection for real-time updates
+	const initializeSSE = async () => {
+		if (!roomId) return;
+
+		try {
+			await sseClient.connect(roomId);
+			sseConnected = true;
+			connectionError = '';
+		} catch (error) {
+			console.error('Failed to connect SSE:', error);
+			connectionError = 'Failed to connect';
+			sseConnected = false;
+		}
+	};
+
+	// SSE event handlers
+	const handleProblemAdded = (problem: ProblemAddedMessage) => {
+		const newProblem: InterviewProblem = {
+			id: problem.id,
+			title: problem.title,
+			description: problem.description,
+			score: problem.score,
+			testCases: problem.testCases
+		};
+		interviewProblems = [...interviewProblems, newProblem];
+	};
+
+	const handleTestCaseAdded = (data: TestCaseAddedMessage) => {
+		interviewProblems = interviewProblems.map(problem => {
+			if (problem.id === data.problemId) {
+				return {
+					...problem,
+					testCases: [...problem.testCases, data.testCase]
+				};
+			}
+			return problem;
+		});
+	};
+
+	const handleSSEError = (error: string) => {
+		console.error('SSE error:', error);
+		connectionError = error;
+		sseConnected = false;
+	};
+
+	const handleSSEConnect = () => {
+		sseConnected = true;
+		connectionError = '';
+		console.log('SSE connected');
+	};
+
+	const handleSSEDisconnect = () => {
+		sseConnected = false;
+		console.log('SSE disconnected');
+	};
+
 	$effect(() => {
 		if (!$session.isPending) {
 			isInterviewer = $session.data?.user.role === 'Interviewer';
@@ -307,12 +364,224 @@
 		}
 	});
 
+	// Setup tab detection when user role is determined and they are an interviewee
+	$effect(() => {
+		if (browser && isInterviewee && roomId) {
+			console.log('Role determined: Setting up tab detection for interviewee');
+			setupTabDetection();
+		}
+	});
+	
+	// Tab switching detection for interviewees
+	let isTabVisible = $state(true);
+	let isWindowFocused = $state(true);
+	let tabSwitchCount = $state(0);
+	let lastTabSwitchTime = 0;
+	let tabSwitchTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	// Function to send tab switch notification
+	const sendTabSwitchNotification = async () => {
+		if (!roomId || !isInterviewee) return;
+
+		try {
+			// Ensure SSE is connected before sending message
+			if (!sseClient.isConnected) {
+				await sseClient.connect(roomId);
+			}
+
+			tabSwitchCount++;
+			const message = `🚨 ALERT: Interviewee switched tabs/apps (${tabSwitchCount} time${tabSwitchCount > 1 ? 's' : ''})`;
+			await sseClient.sendMessage(message);
+			console.log('Tab switch notification sent:', message);
+		} catch (error) {
+			console.error('Failed to send tab switch notification:', error);
+		}
+	};
+
+	// Handle visibility change (tab switching within browser)
+	const handleVisibilityChange = async () => {
+		if (!browser || !roomId || !isInterviewee) return;
+
+		const isCurrentlyVisible = !document.hidden;
+		const currentTime = Date.now();
+
+		console.log('Visibility change:', {
+			isCurrentlyVisible,
+			isTabVisible,
+			isInterviewee,
+			roomId
+		});
+
+		// Only track when tab becomes hidden (user switched away)
+		if (isTabVisible && !isCurrentlyVisible) {
+			console.log('Tab switch detected (visibility)');
+			
+			// Prevent multiple rapid notifications (debounce with 1 second)
+			if (currentTime - lastTabSwitchTime < 1000) {
+				console.log('Tab switch ignored due to debouncing');
+				return;
+			}
+
+			lastTabSwitchTime = currentTime;
+			await sendTabSwitchNotification();
+		}
+
+		isTabVisible = isCurrentlyVisible;
+	};
+
+	// Handle window blur (alt+tab, clicking outside browser, etc.)
+	const handleWindowBlur = async () => {
+		if (!browser || !roomId || !isInterviewee) return;
+
+		const currentTime = Date.now();
+
+		console.log('Window blur detected for interviewee');
+
+		// Only track when window loses focus
+		if (isWindowFocused) {
+			// Prevent multiple rapid notifications (debounce with 1 second)
+			if (currentTime - lastTabSwitchTime < 1000) {
+				console.log('Window blur ignored due to debouncing');
+				return;
+			}
+
+			// Use a small timeout to confirm it's a real focus loss
+			if (tabSwitchTimeout) {
+				clearTimeout(tabSwitchTimeout);
+			}
+
+			tabSwitchTimeout = setTimeout(async () => {
+				// Double check that window is still blurred
+				if (!document.hasFocus()) {
+					lastTabSwitchTime = currentTime;
+					await sendTabSwitchNotification();
+				}
+			}, 200);
+		}
+
+		isWindowFocused = false;
+	};
+
+	// Handle window focus
+	const handleWindowFocus = () => {
+		console.log('Window focus gained');
+		isWindowFocused = true;
+		isTabVisible = true;
+
+		// Clear any pending timeout when focus returns
+		if (tabSwitchTimeout) {
+			clearTimeout(tabSwitchTimeout);
+			tabSwitchTimeout = null;
+		}
+	};
+
+	// Handle keyboard shortcuts that might indicate app switching
+	const handleKeyDown = async (event: KeyboardEvent) => {
+		if (!browser || !roomId || !isInterviewee) return;
+
+		// Detect Alt+Tab (Windows/Linux) or Cmd+Tab (Mac)
+		const isAltTab = event.altKey && event.key === 'Tab';
+		const isCmdTab = event.metaKey && event.key === 'Tab';
+		
+		if (isAltTab || isCmdTab) {
+			console.log('App switching keyboard shortcut detected:', { isAltTab, isCmdTab });
+			
+			const currentTime = Date.now();
+			
+			// Prevent multiple rapid notifications
+			if (currentTime - lastTabSwitchTime < 1000) {
+				return;
+			}
+
+			// Small delay to check if the user actually switched
+			setTimeout(async () => {
+				if (!document.hasFocus()) {
+					lastTabSwitchTime = currentTime;
+					await sendTabSwitchNotification();
+				}
+			}, 300);
+		}
+	};
+
+	const setupTabDetection = () => {
+		if (!browser) return;
+		
+		console.log('Setting up tab detection event listeners');
+
+		// Listen for visibility changes (tab switches within browser)
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+
+		// Listen for window blur/focus events (alt+tab, clicking outside browser)
+		window.addEventListener('blur', handleWindowBlur);
+		window.addEventListener('focus', handleWindowFocus);
+
+		// Listen for keyboard shortcuts
+		document.addEventListener('keydown', handleKeyDown);
+
+		// Initialize states
+		isTabVisible = !document.hidden;
+		isWindowFocused = document.hasFocus();
+	};
+
+	const cleanupTabDetection = () => {
+		if (!browser) return;
+
+		console.log('Cleaning up tab detection event listeners');
+
+		// Clear any pending timeout
+		if (tabSwitchTimeout) {
+			clearTimeout(tabSwitchTimeout);
+			tabSwitchTimeout = null;
+		}
+
+		// Remove event listeners
+		document.removeEventListener('visibilitychange', handleVisibilityChange);
+		window.removeEventListener('blur', handleWindowBlur);
+		window.removeEventListener('focus', handleWindowFocus);
+		document.removeEventListener('keydown', handleKeyDown);
+	};
+
 	$effect(() => {
 		if (roomId) {
+			// Debug role detection
+			console.log('User role detection:', {
+				isInterviewer: isInterviewer,
+				isInterviewee: isInterviewee,
+				urlParams: browser ? new URLSearchParams(window.location.search).get('role') : null
+			});
+
 			fetchInterviewProblems();
 			if (isInterviewer) {
 				fetchAvailableProblems();
 			}
+			initializeSSE();
+		}
+	});
+
+	onMount(() => {
+		// Setup SSE event handlers
+		const unsubscribeProblemAdded = sseClient.onProblemAdded(handleProblemAdded);
+		const unsubscribeTestCaseAdded = sseClient.onTestCaseAdded(handleTestCaseAdded);
+		const unsubscribeError = sseClient.onError(handleSSEError);
+		const unsubscribeConnect = sseClient.onConnect(handleSSEConnect);
+		const unsubscribeDisconnect = sseClient.onDisconnect(handleSSEDisconnect);
+
+		return () => {
+			unsubscribeProblemAdded();
+			unsubscribeTestCaseAdded();
+			unsubscribeError();
+			unsubscribeConnect();
+			unsubscribeDisconnect();
+		};
+	});
+
+	onDestroy(() => {
+		// Cleanup tab detection
+		cleanupTabDetection();
+
+		// Disconnect SSE if connected
+		if (sseConnected) {
+			sseClient.disconnect();
 		}
 	});
 </script>
@@ -330,6 +599,15 @@
 								<div class="flex items-center gap-2">
 									<CodeIcon size={16} />
 									<h3 class="text-sm font-medium">Code Editor</h3>
+									{#if isInterviewee && tabSwitchCount > 0}
+										<Badge
+											variant="outline"
+											class="bg-orange-50 text-xs text-orange-600 dark:bg-orange-950 dark:text-orange-400"
+											title="Number of times you've switched tabs (visible to interviewer)"
+										>
+											Tab switches: {tabSwitchCount}
+										</Badge>
+									{/if}
 								</div>
 								{#if isInterviewee}
 									<div class="flex items-center gap-2">
@@ -368,8 +646,8 @@
 									<FlaskConicalIcon size={16} />
 									<h3 class="text-sm font-medium">Problems & Test Cases</h3>
 								</div>
-								{#if isInterviewer}
-									<div class="flex items-center gap-1">
+								<div class="flex items-center gap-2">
+									{#if isInterviewer}
 										<Button
 											size="sm"
 											variant="outline"
@@ -379,8 +657,24 @@
 											<PlusIcon size={12} class="mr-1" />
 											Add Problem
 										</Button>
+									{/if}
+									<!-- Connection Status -->
+									<div class="flex items-center gap-1">
+										{#if sseConnected}
+											<div class="flex items-center gap-1">
+												<div class="h-2 w-2 rounded-full bg-green-500"></div>
+												<span class="text-xs text-green-600">Live</span>
+											</div>
+										{:else}
+											<div class="flex items-center gap-1">
+												<div class="h-2 w-2 rounded-full bg-red-500"></div>
+												<span class="text-xs text-red-600">
+													{connectionError || 'Offline'}
+												</span>
+											</div>
+										{/if}
 									</div>
-								{/if}
+								</div>
 							</div>
 							<div class="flex-1 overflow-y-auto p-2">
 								{#if interviewProblems.length === 0}
