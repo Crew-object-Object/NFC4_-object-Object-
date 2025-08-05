@@ -5,7 +5,7 @@ import type { RequestHandler } from './$types';
 export const PATCH: RequestHandler = async ({ request, params }) => {
 	try {
 		const { roomId } = params;
-		const { status } = await request.json();
+		const { status, interviewScore } = await request.json();
 
 		if (!roomId) {
 			return json({ success: false, error: 'Room ID is required' }, { status: 400 });
@@ -18,6 +18,17 @@ export const PATCH: RequestHandler = async ({ request, params }) => {
 			);
 		}
 
+		// Validate interview score if provided
+		if (interviewScore !== undefined) {
+			const score = parseInt(interviewScore);
+			if (isNaN(score) || score < 0 || score > 100) {
+				return json(
+					{ success: false, error: 'Interview score must be a number between 0-100' },
+					{ status: 400 }
+				);
+			}
+		}
+
 		const interview = await prisma.interview.findFirst({
 			where: {
 				roomId: roomId
@@ -28,13 +39,26 @@ export const PATCH: RequestHandler = async ({ request, params }) => {
 			return json({ success: false, error: 'Interview not found' }, { status: 404 });
 		}
 
+		// Prepare update data
+		const updateData: any = {
+			status: status
+		};
+
+		// Add interview score if provided
+		if (interviewScore !== undefined) {
+			updateData.interviewScore = parseInt(interviewScore);
+		}
+
+		// Set end time if completing the interview
+		if (status === 'COMPLETED' && !interview.endTime) {
+			updateData.endTime = new Date();
+		}
+
 		const updatedInterview = await prisma.interview.update({
 			where: {
 				id: interview.id
 			},
-			data: {
-				status: status
-			},
+			data: updateData,
 			include: {
 				interviewer: {
 					select: {

@@ -360,6 +360,8 @@
 	let canJoinInterview = $state(false);
 	let timeUntilStart = $state(0);
 	let isLoadingInterview = $state(true);
+	let interviewScore = $state<string>('');
+	let scoreError = $state<string>('');
 
 	// Format elapsed time as HH:MM:SS
 	const formatElapsedTime = (seconds: number) => {
@@ -465,6 +467,14 @@
 	const endInterview = async () => {
 		if (!roomId || isEndingInterview) return;
 
+		// Validate score input
+		const score = parseInt(interviewScore);
+		if (!interviewScore || isNaN(score) || score < 0 || score > 100) {
+			scoreError = 'Please enter a valid score between 0-100';
+			return;
+		}
+
+		scoreError = '';
 		isEndingInterview = true;
 		try {
 			const response = await fetch(`/api/interviews/${roomId}`, {
@@ -473,7 +483,8 @@
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					status: 'COMPLETED'
+					status: 'COMPLETED',
+					interviewScore: score
 				})
 			});
 
@@ -485,7 +496,7 @@
 				
 				// Send notification through SSE
 				if (sseClient.isConnected) {
-					await sseClient.sendMessage('🎉 Interview has been ended by the interviewer');
+					await sseClient.sendMessage(`🎉 Interview has been ended by the interviewer. Final Score: ${score}%`);
 				}
 				
 				// Redirect to dashboard after a short delay
@@ -494,9 +505,11 @@
 				}, 2000);
 			} else {
 				console.error('Failed to end interview:', result.error);
+				scoreError = result.error || 'Failed to end interview';
 			}
 		} catch (error) {
 			console.error('Error ending interview:', error);
+			scoreError = 'Network error occurred';
 		} finally {
 			isEndingInterview = false;
 		}
@@ -995,7 +1008,11 @@
 						variant="destructive" 
 						size="sm"
 						class="gap-2"
-						onclick={() => showEndInterviewDialog = true}
+						onclick={() => {
+							showEndInterviewDialog = true;
+							interviewScore = '';
+							scoreError = '';
+						}}
 						disabled={isEndingInterview}
 					>
 						<PhoneOff size={14} />
@@ -1602,13 +1619,13 @@
 
 <!-- End Interview Confirmation Dialog -->
 <AlertDialog.Root bind:open={showEndInterviewDialog}>
-	<AlertDialog.Content>
+	<AlertDialog.Content class="max-w-md">
 		<AlertDialog.Header>
-			<AlertDialog.Title>End Interview</AlertDialog.Title>
-			<AlertDialog.Description>
-				Are you sure you want to end this interview? This action cannot be undone and will mark the interview as completed.
+			<AlertDialog.Title>End Interview & Score Candidate</AlertDialog.Title>
+			<AlertDialog.Description class="space-y-4">
+				<p>You are about to end this interview. Please provide a final score for the candidate's performance.</p>
 				
-				<div class="mt-4 rounded-lg bg-muted p-3">
+				<div class="rounded-lg bg-muted p-3">
 					<div class="flex items-center gap-2 text-sm">
 						<Clock size={16} />
 						<span class="font-medium">Interview Duration:</span>
@@ -1617,13 +1634,40 @@
 						</Badge>
 					</div>
 				</div>
+
+				<div class="space-y-2">
+					<Label for="interview-score" class="text-sm font-medium">
+						Final Score (0-100%)
+					</Label>
+					<Input
+						id="interview-score"
+						type="number"
+						min="0"
+						max="100"
+						placeholder="Enter score between 0-100"
+						bind:value={interviewScore}
+						class="text-center text-lg font-semibold {scoreError ? 'border-destructive' : ''}"
+						oninput={() => {
+							if (scoreError) scoreError = '';
+						}}
+					/>
+					{#if scoreError}
+						<p class="text-xs text-destructive">{scoreError}</p>
+					{/if}
+					<p class="text-xs text-muted-foreground">
+						This score will be saved and visible in the interview history.
+					</p>
+				</div>
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Cancel onclick={() => {
+				interviewScore = '';
+				scoreError = '';
+			}}>Cancel</AlertDialog.Cancel>
 			<AlertDialog.Action 
 				onclick={endInterview}
-				disabled={isEndingInterview}
+				disabled={isEndingInterview || !interviewScore}
 				class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 			>
 				{#if isEndingInterview}
@@ -1631,7 +1675,7 @@
 					Ending Interview...
 				{:else}
 					<PhoneOff size={16} class="mr-2" />
-					End Interview
+					End Interview & Save Score
 				{/if}
 			</AlertDialog.Action>
 		</AlertDialog.Footer>
