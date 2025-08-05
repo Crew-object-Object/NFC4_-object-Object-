@@ -1,49 +1,30 @@
 <script lang="ts">
+	import {
+		Code,
+		EditIcon,
+		UserIcon,
+		LogInIcon,
+		HistoryIcon,
+		UserRoundIcon,
+		ChevronUpIcon,
+		LoaderCircleIcon,
+		LayoutDashboardIcon
+	} from 'lucide-svelte';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { authClient } from '$lib/auth-client';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
-	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
-	import { ChevronUpIcon, LoaderCircleIcon, LogInIcon, UserRoundIcon } from 'lucide-svelte';
-	import HomeIcon from 'lucide-svelte/icons/home';
-	import EditIcon from 'lucide-svelte/icons/edit';
-	import UserIcon from 'lucide-svelte/icons/user';
-	import SettingsIcon from 'lucide-svelte/icons/settings';
-	import UserCheckIcon from 'lucide-svelte/icons/user-check';
-	import GithubIcon from 'lucide-svelte/icons/github';
+	import * as Sidebar from '$lib/components/ui/sidebar';
+	import { useSidebar } from '$lib/components/ui/sidebar';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 
 	const SIDEBAR_LINK_GROUPS = [
 		{
 			label: 'Main',
 			items: [
-				{ label: 'Home', href: '/', icon: HomeIcon },
+				{ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboardIcon },
 				{ label: 'Editor', href: '/editor', icon: EditIcon },
+				{ label: 'History', href: '/history', icon: HistoryIcon },
 				{ label: 'Profile', href: '/profile', icon: UserIcon }
-			]
-		},
-		{
-			label: 'Settings',
-			items: [
-				{
-					label: 'Preferences',
-					href: '/settings/preferences',
-					icon: SettingsIcon
-				},
-				{
-					label: 'Account',
-					href: '/settings/account',
-					icon: UserCheckIcon
-				}
-			]
-		},
-		{
-			label: 'External',
-			items: [
-				{
-					label: 'Github',
-					href: 'https://github.com',
-					icon: GithubIcon
-				}
 			]
 		}
 	];
@@ -57,17 +38,18 @@
 		<Sidebar.Menu>
 			<Sidebar.MenuItem>
 				<Sidebar.MenuButton
-					class="h-fit w-full justify-start bg-secondary text-start"
 					onclick={() => sidebar.setOpenMobile(false)}
+					class="h-fit w-full justify-start bg-primary/10 text-start"
 				>
 					<a class="flex w-full items-center gap-2 px-2 py-0 text-xl font-semibold" href="/">
-						<img src="/favicon.ico" alt="logo" class="h-12 w-12" />
+						<Code class="size-7 text-primary" />
 						CodeCollab
 					</a>
 				</Sidebar.MenuButton>
 			</Sidebar.MenuItem>
 		</Sidebar.Menu>
 	</Sidebar.Header>
+
 	<Sidebar.Content>
 		{#each SIDEBAR_LINK_GROUPS as linkGroup (linkGroup.label)}
 			<Sidebar.Group>
@@ -82,9 +64,9 @@
 								>
 									{#snippet child({ props })}
 										<a
+											{...props}
 											href={link.href}
 											target={link.label === 'Github' ? '_blank' : '_self'}
-											{...props}
 										>
 											<svelte:component this={link.icon} />
 											<span>{link.label}</span>
@@ -126,15 +108,11 @@
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content class="w-[var(--bits-dropdown-menu-anchor-width)]">
 							<DropdownMenu.Group>
-								<DropdownMenu.Item onclick={() => sidebar.setOpenMobile(false)}>
-									{#snippet child({ props })}
-										<a href="/profile" {...props}><UserRoundIcon /> Profile</a>
-									{/snippet}
-								</DropdownMenu.Item>
 								<DropdownMenu.Item
 									class="text-destructive"
 									onclick={() => {
 										authClient.signOut();
+										goto('/');
 									}}
 								>
 									<LogInIcon />
