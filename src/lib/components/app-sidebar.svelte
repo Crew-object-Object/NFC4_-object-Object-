@@ -1,83 +1,134 @@
 <script lang="ts">
-	import CameraIcon from "@tabler/icons-svelte/icons/camera";
-	import ChartBarIcon from "@tabler/icons-svelte/icons/chart-bar";
-	import DashboardIcon from "@tabler/icons-svelte/icons/dashboard";
-	import DatabaseIcon from "@tabler/icons-svelte/icons/database";
-	import FileAiIcon from "@tabler/icons-svelte/icons/file-ai";
-	import FileDescriptionIcon from "@tabler/icons-svelte/icons/file-description";
-	import FileWordIcon from "@tabler/icons-svelte/icons/file-word";
-	import FolderIcon from "@tabler/icons-svelte/icons/folder";
-	import HelpIcon from "@tabler/icons-svelte/icons/help";
-	import InnerShadowTopIcon from "@tabler/icons-svelte/icons/inner-shadow-top";
-	import ListDetailsIcon from "@tabler/icons-svelte/icons/list-details";
-	import ReportIcon from "@tabler/icons-svelte/icons/report";
-	import SearchIcon from "@tabler/icons-svelte/icons/search";
-	import SettingsIcon from "@tabler/icons-svelte/icons/settings";
-	import UsersIcon from "@tabler/icons-svelte/icons/users";
-	import NavDocuments from "./nav-documents.svelte";
-	import NavMain from "./nav-main.svelte";
-	import NavSecondary from "./nav-secondary.svelte";
-	import NavUser from "./nav-user.svelte";
-	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-	import type { ComponentProps } from "svelte";
+	import { toTitleCase } from '$lib/utils';
+	import { signOut } from '$lib/hooks/auth';
+	import { useAuth } from '$lib/hooks/use-auth';
+	import { toggleMode, mode } from 'mode-watcher';
+	import { Switch } from '$lib/components/ui/switch';
+	import * as Avatar from '$lib/components/ui/avatar';
+	import * as Sidebar from '$lib/components/ui/sidebar';
+	import { useSidebar } from '$lib/components/ui/sidebar';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { ChevronsUpDown, LogOut, Loader2, Moon } from 'lucide-svelte';
 
-	const data = {
-		user: {
-			name: "shadcn",
-			email: "m@example.com",
-			avatar: "/avatars/shadcn.jpg",
-		},
-		navMain: [
-			{
-				title: "Dashboard",
-				url: "#",
-				icon: DashboardIcon,
-			},
-			{
-				title: "Lifecycle",
-				url: "#",
-				icon: ListDetailsIcon,
-			},
-			{
-				title: "Analytics",
-				url: "#",
-				icon: ChartBarIcon,
-			},
-			{
-				title: "Projects",
-				url: "#",
-				icon: FolderIcon,
-			},
-			{
-				title: "Team",
-				url: "#",
-				icon: UsersIcon,
-			},
-		],
-	};
+	const auth = useAuth();
+	const sidebar = useSidebar();
+	let isSigningOut = $state(false);
+	const { user, isLoading } = $derived($auth);
+	let isDarkMode = $state(mode.current === 'dark');
+	const displayName = $derived(user?.name ? toTitleCase(user.name) : 'User');
 
-	let { ...restProps }: ComponentProps<typeof Sidebar.Root> = $props();
+	$effect(() => {
+		isDarkMode = mode.current === 'dark';
+	});
+
+	async function handleSignOut() {
+		if (isSigningOut) return;
+		isSigningOut = true;
+
+		try {
+			await signOut();
+		} catch (error) {
+			console.error('Error signing out:', error);
+		} finally {
+			isSigningOut = false;
+		}
+	}
 </script>
 
-<Sidebar.Root collapsible="offcanvas" {...restProps}>
-	<Sidebar.Header>
-		<Sidebar.Menu>
-			<Sidebar.MenuItem>
-				<Sidebar.MenuButton class="data-[slot=sidebar-menu-button]:!p-1.5">
+{#if isLoading}
+	<Sidebar.Menu>
+		<Sidebar.MenuItem>
+			<Sidebar.MenuButton size="lg" aria-disabled={true}>
+				<div class="h-8 w-8 animate-pulse rounded-lg bg-muted"></div>
+				<div class="flex-1 space-y-2">
+					<div class="h-3 w-24 animate-pulse rounded bg-muted"></div>
+					<div class="h-2 w-32 animate-pulse rounded bg-muted"></div>
+				</div>
+			</Sidebar.MenuButton>
+		</Sidebar.MenuItem>
+	</Sidebar.Menu>
+{:else if user}
+	<Sidebar.Menu>
+		<Sidebar.MenuItem>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
 					{#snippet child({ props })}
-						<a href="/" {...props}>
-							<InnerShadowTopIcon class="!size-5" />
-							<span class="text-base font-semibold">Acme Inc.</span>
-						</a>
+						<Sidebar.MenuButton
+							size="lg"
+							{...props}
+							class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+						>
+							<Avatar.Root class="h-8 w-8 rounded-lg">
+								{#if user.image}
+									<Avatar.Image src={user.image} alt={user.name ?? user.email} />
+								{:else}
+									<Avatar.Fallback class="rounded-lg">
+										{user.name?.[0]?.toUpperCase() ?? user.email[0].toUpperCase()}
+									</Avatar.Fallback>
+								{/if}
+							</Avatar.Root>
+
+							<div class="grid flex-1 text-left text-sm leading-tight">
+								<span class="truncate font-semibold">{displayName}</span>
+								<span class="truncate text-xs">{user.email}</span>
+							</div>
+
+							<ChevronsUpDown class="ml-auto size-4" />
+						</Sidebar.MenuButton>
 					{/snippet}
-				</Sidebar.MenuButton>
-			</Sidebar.MenuItem>
-		</Sidebar.Menu>
-	</Sidebar.Header>
-	<Sidebar.Content>
-		<NavMain items={data.navMain} />
-	</Sidebar.Content>
-	<Sidebar.Footer>
-		<NavUser user={data.user} />
-	</Sidebar.Footer>
-</Sidebar.Root>
+				</DropdownMenu.Trigger>
+
+				<DropdownMenu.Content
+					align="end"
+					sideOffset={4}
+					side={sidebar.isMobile ? 'bottom' : 'right'}
+					class="w-[var(--bits-dropdown-menu-anchor-width)] min-w-56 rounded-lg"
+				>
+					<DropdownMenu.Label class="p-0 font-normal">
+						<div class="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+							<Avatar.Root class="h-8 w-8 rounded-lg">
+								{#if user.image}
+									<Avatar.Image src={user.image} alt={user.name ?? user.email} />
+								{:else}
+									<Avatar.Fallback class="rounded-lg">
+										{user.name?.[0]?.toUpperCase() ?? user.email[0].toUpperCase()}
+									</Avatar.Fallback>
+								{/if}
+							</Avatar.Root>
+
+							<div class="grid flex-1 text-left text-sm leading-tight">
+								<span class="truncate font-semibold">{displayName}</span>
+								<span class="truncate text-xs">{user.email}</span>
+							</div>
+						</div>
+					</DropdownMenu.Label>
+
+					<DropdownMenu.Separator />
+
+					<DropdownMenu.Item
+						onclick={(e) => e.preventDefault()}
+						class="flex cursor-pointer items-center"
+					>
+						<div class="flex flex-1 items-center gap-2">
+							<Moon class="mr-2 h-4 w-4" />
+							<span>Dark mode</span>
+						</div>
+						<Switch checked={isDarkMode} onclick={toggleMode} />
+					</DropdownMenu.Item>
+
+					<DropdownMenu.Separator />
+
+					<DropdownMenu.Item class="cursor-pointer" onclick={handleSignOut} disabled={isSigningOut}>
+						{#if isSigningOut}
+							<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+							<span>Signing out...</span>
+						{:else}
+							<LogOut class="mr-2 h-4 w-4" />
+							<span>Log out</span>
+						{/if}
+					</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
+		</Sidebar.MenuItem>
+	</Sidebar.Menu>
+{/if}
