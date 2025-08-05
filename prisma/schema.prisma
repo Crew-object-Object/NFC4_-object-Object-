@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  Interviewer
+  Interviewee
+}
+
 model User {
   id            String    @id
   name          String
@@ -15,13 +20,14 @@ model User {
   image         String?
   createdAt     DateTime
   updatedAt     DateTime
+  role          Role      @default(Interviewee)
   sessions      Session[]
   accounts      Account[]
 
   interviewsAsInterviewer Interview[] @relation("Interviewer")
   interviewsAsInterviewee Interview[] @relation("Interviewee")
-  fromMessages            Messages[] @relation("FromMessages")
-  toMessages              Messages[] @relation("ToMessages")
+  fromMessages            Messages[]  @relation("FromMessages")
+  toMessages              Messages[]  @relation("ToMessages")
 
   @@unique([email])
   @@map("user")
