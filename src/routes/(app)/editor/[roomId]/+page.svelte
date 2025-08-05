@@ -494,6 +494,26 @@
 		});
 	};
 
+	// Handle incoming chat messages to detect system alerts
+	const handleChatMessage = (message: any) => {
+		// If this is a system alert and the current user is the interviewer
+		if (isInterviewer && message.content && message.content.includes('SYSTEM ALERT')) {
+			console.log('System alert received by interviewer:', message.content);
+			
+			// You could add additional notifications here, like:
+			// - Browser notifications
+			// - Sound alerts
+			// - Visual highlights
+			
+			// For now, just log it prominently
+			if (message.content.includes('switched tabs')) {
+				console.warn('🚨 INTERVIEWER ALERT: Candidate switched tabs/applications!');
+			} else if (message.content.includes('pasted content')) {
+				console.warn('📋 INTERVIEWER ALERT: Candidate pasted content into editor!');
+			}
+		}
+	};
+
 	const handleSSEError = (error: string) => {
 		console.error('SSE error:', error);
 		connectionError = error;
@@ -554,9 +574,10 @@
 			}
 
 			tabSwitchCount++;
-			const message = `🚨 ALERT: Interviewee switched tabs/apps (${tabSwitchCount} time${tabSwitchCount > 1 ? 's' : ''})`;
+			const userName = $session.data?.user?.name || 'Interviewee';
+			const message = `🚨 SYSTEM ALERT: ${userName} switched tabs/applications (Total: ${tabSwitchCount} time${tabSwitchCount > 1 ? 's' : ''})`;
 			await sseClient.sendMessage(message);
-			console.log('Tab switch notification sent:', message);
+			console.log('Tab switch notification sent to all participants:', message);
 		} catch (error) {
 			console.error('Failed to send tab switch notification:', error);
 		}
@@ -582,9 +603,10 @@
 
 			lastPasteTime = currentTime;
 			pasteCount++;
-			const message = `📋 ALERT: Interviewee pasted content into editor (${pasteCount} time${pasteCount > 1 ? 's' : ''})`;
+			const userName = $session.data?.user?.name || 'Interviewee';
+			const message = `📋 SYSTEM ALERT: ${userName} pasted content into the code editor (Total: ${pasteCount} time${pasteCount > 1 ? 's' : ''})`;
 			await sseClient.sendMessage(message);
-			console.log('Paste notification sent:', message);
+			console.log('Paste notification sent to all participants:', message);
 		} catch (error) {
 			console.error('Failed to send paste notification:', error);
 		}
@@ -756,6 +778,7 @@
 		// Setup SSE event handlers
 		const unsubscribeProblemAdded = sseClient.onProblemAdded(handleProblemAdded);
 		const unsubscribeTestCaseAdded = sseClient.onTestCaseAdded(handleTestCaseAdded);
+		const unsubscribeMessage = sseClient.onMessage(handleChatMessage);
 		const unsubscribeError = sseClient.onError(handleSSEError);
 		const unsubscribeConnect = sseClient.onConnect(handleSSEConnect);
 		const unsubscribeDisconnect = sseClient.onDisconnect(handleSSEDisconnect);
@@ -763,6 +786,7 @@
 		return () => {
 			unsubscribeProblemAdded();
 			unsubscribeTestCaseAdded();
+			unsubscribeMessage();
 			unsubscribeError();
 			unsubscribeConnect();
 			unsubscribeDisconnect();
