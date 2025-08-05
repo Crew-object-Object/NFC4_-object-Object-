@@ -18,7 +18,10 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
+	import { ScrollArea } from '$lib/components/ui/scroll-area';
+	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { Problem } from '$lib/problemset';
+	import { browser } from '$app/environment';
 
 	interface InterviewProblem {
 		id: string;
@@ -207,6 +210,7 @@
 	let selectedTestCase: any = null;
 	let isExecuting = false;
 	let executionResults: any[] = [];
+	let currentExecutingTestCase = -1; // Track which test case is currently executing
 	let showSubmissionDialog = false;
 
 	// Function to handle code content changes from TiptapEditor
@@ -220,6 +224,7 @@
 		
 		isExecuting = true;
 		executionResults = [];
+		currentExecutingTestCase = -1;
 		
 		try {
 			// Run code against all test cases for the selected problem
@@ -227,6 +232,7 @@
 			
 			for (let i = 0; i < testCases.length; i++) {
 				const testCase = testCases[i];
+				currentExecutingTestCase = i;
 				
 				try {
 					const response = await fetch('/api/submit', {
@@ -242,8 +248,21 @@
 					});
 					
 					const result = await response.json();
-
-					console.log(result)
+					
+					if (result.error) {
+						executionResults.push({
+							testCaseIndex: i + 1,
+							input: testCase.input,
+							expectedOutput: testCase.output.trim(),
+							actualOutput: '',
+							passed: false,
+							error: result.error,
+							executionTime: 0,
+							memory: 0,
+							status: 'error'
+						});
+						continue;
+					}
 					
 					// Compare output with expected
 					const actualOutput = result.stdout?.trim() || '';
@@ -257,8 +276,10 @@
 						actualOutput: actualOutput,
 						passed: passed,
 						error: result.stderr || null,
-						executionTime: result.time || 0,
-						memory: result.memory || 0
+						executionTime: parseFloat(result.time) || 0,
+						memory: parseInt(result.memory) || 0,
+						status: result.status?.description || 'Unknown',
+						statusId: result.status?.id || 0
 					});
 					
 				} catch (error) {
@@ -269,9 +290,11 @@
 						expectedOutput: testCase.output,
 						actualOutput: '',
 						passed: false,
-						error: 'Execution failed',
+						error: 'Network error or execution failed',
 						executionTime: 0,
-						memory: 0
+						memory: 0,
+						status: 'error',
+						statusId: 0
 					});
 				}
 			}
@@ -280,14 +303,27 @@
 			console.error('Error during code submission:', error);
 		} finally {
 			isExecuting = false;
+			currentExecutingTestCase = -1;
 		}
 	};
 
 	// Check if current user is interviewer
 	const isInterviewer = () => {
-		// For now, we'll check based on the interview data when it's available
-		// This will be improved when we have proper user role data
-		return true; // Allow all users to manage problems for now
+		// For now, we'll implement a simple role check
+		// You can modify this logic based on your authentication/role system
+		
+		// Option 1: Check URL parameter (e.g., ?role=interviewer)
+		if (!browser) return false; // Ensure this runs only in browser context
+		const urlParams = new URLSearchParams(window.location.search);
+		const role = urlParams.get('role');
+		if (role === 'interviewer') return true;
+		
+		// Option 2: For testing interviewee view, return false
+		// Change this to true if you want to test interviewer view
+		return false;
+		
+		// Option 3: For production, implement proper authentication logic here
+		// Example: return currentUser?.role === 'interviewer';
 	};
 
 	// Check if current user is interviewee  
@@ -679,7 +715,7 @@
 
 <!-- Code Submission Sheet -->
 <Sheet.Root bind:open={showSubmissionDialog}>
-	<Sheet.Content side="right" class="w-full sm:max-w-4xl p-6">
+	<Sheet.Content side="right" class="w-full sm:max-w-4xl p-6 max-h-screen overflow-y-auto">
 		<Sheet.Header>
 			<Sheet.Title>Run Code Tests</Sheet.Title>
 			<Sheet.Description>
@@ -724,58 +760,171 @@
 				</div>
 
 				<!-- Execution Results -->
-				{#if executionResults.length > 0}
+				{#if isExecuting || executionResults.length > 0}
 					<div class="space-y-3">
-						<h3 class="text-sm font-medium">Test Results</h3>
-						{#each executionResults as result}
-							<div class="border rounded-lg p-3 {result.passed ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950' : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950'}">
-								<div class="flex items-center justify-between mb-2">
-									<span class="text-sm font-medium">Test Case {result.testCaseIndex}</span>
-									<Badge variant={result.passed ? 'default' : 'destructive'} class="text-xs">
-										{result.passed ? 'PASSED' : 'FAILED'}
-									</Badge>
+						<div class="flex items-center justify-between">
+							<h3 class="text-sm font-medium">Test Results</h3>
+							{#if isExecuting}
+								<div class="flex items-center gap-2 text-xs text-muted-foreground">
+									<div class="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+									{#if currentExecutingTestCase >= 0}
+										Running test case {currentExecutingTestCase + 1}/{selectedProblemForSubmission?.testCases?.length || 0}
+									{:else}
+										Preparing execution...
+									{/if}
 								</div>
-								
-								<div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-									<div>
-										<div class="font-medium text-muted-foreground mb-1">Input</div>
-										<div class="bg-background p-2 rounded border max-h-20 overflow-y-auto font-mono">{result.input}</div>
-									</div>
-									<div>
-										<div class="font-medium text-muted-foreground mb-1">Expected Output</div>
-										<div class="bg-background p-2 rounded border max-h-20 overflow-y-auto font-mono">{result.expectedOutput}</div>
-									</div>
-									<div>
-										<div class="font-medium text-muted-foreground mb-1">Your Output</div>
-										<div class="bg-background p-2 rounded border max-h-20 overflow-y-auto font-mono {result.passed ? 'text-green-600' : 'text-red-600'}">{result.actualOutput || 'No output'}</div>
-									</div>
-								</div>
-								
-								{#if result.error}
-									<div class="mt-2">
-										<div class="font-medium text-muted-foreground mb-1 text-xs">Error</div>
-										<div class="bg-red-100 dark:bg-red-950 p-2 rounded border text-xs font-mono text-red-700 dark:text-red-300">{result.error}</div>
-									</div>
-								{/if}
-								
-								<div class="flex justify-between items-center mt-2 text-xs text-muted-foreground">
-									<span>Execution Time: {result.executionTime}s</span>
-									<span>Memory: {result.memory} KB</span>
-								</div>
-							</div>
-						{/each}
+							{/if}
+						</div>
 						
-						<!-- Summary -->
-						<div class="bg-muted p-3 rounded-lg">
-							<div class="text-sm font-medium mb-1">
-								Results: {executionResults.filter(r => r.passed).length}/{executionResults.length} tests passed
-							</div>
-							<div class="text-xs text-muted-foreground">
-								{#if executionResults.every(r => r.passed)}
-									🎉 All tests passed! Great job!
-								{:else}
-									Keep working on it. Review the failed test cases above.
-								{/if}
+						<div class="max-h-[60vh] min-h-64 border rounded-lg overflow-y-auto">
+							<div class="p-3">
+								<div class="space-y-3">
+									{#if isExecuting}
+										<!-- Show progress for test cases -->
+										{#each Array(selectedProblemForSubmission?.testCases?.length || 0) as _, index}
+											<div class="border rounded-lg p-3 {
+												index < executionResults.length 
+													? executionResults[index].passed 
+														? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950' 
+														: 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950'
+													: index === currentExecutingTestCase
+														? 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950'
+														: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900'
+											}">
+												<div class="flex items-center justify-between mb-2">
+													<span class="text-sm font-medium">Test Case {index + 1}</span>
+													{#if index < executionResults.length}
+														<Badge variant={executionResults[index].passed ? 'default' : 'destructive'} class="text-xs">
+															{executionResults[index].passed ? 'PASSED' : 'FAILED'}
+														</Badge>
+													{:else if index === currentExecutingTestCase}
+														<div class="flex items-center gap-1">
+															<div class="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+															<span class="text-xs text-blue-600">Running...</span>
+														</div>
+													{:else}
+														<Badge variant="outline" class="text-xs">Pending</Badge>
+													{/if}
+												</div>
+												
+												{#if index < executionResults.length}
+													<!-- Show completed result -->
+													<div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+														<div>
+															<div class="font-medium text-muted-foreground mb-1">Input</div>
+															<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs">{executionResults[index].input}</div>
+														</div>
+														<div>
+															<div class="font-medium text-muted-foreground mb-1">Expected</div>
+															<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs">{executionResults[index].expectedOutput}</div>
+														</div>
+														<div>
+															<div class="font-medium text-muted-foreground mb-1">Your Output</div>
+															<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs {executionResults[index].passed ? 'text-green-600' : 'text-red-600'}">{executionResults[index].actualOutput || 'No output'}</div>
+														</div>
+													</div>
+													
+													{#if executionResults[index].error}
+														<div class="mt-2">
+															<div class="font-medium text-muted-foreground mb-1 text-xs">Error</div>
+															<div class="bg-red-100 dark:bg-red-950 p-2 rounded border text-xs font-mono text-red-700 dark:text-red-300 max-h-20 overflow-y-auto">{executionResults[index].error}</div>
+														</div>
+													{/if}
+													
+													<div class="flex justify-between items-center mt-2 text-xs text-muted-foreground">
+														<span>Time: {executionResults[index].executionTime?.toFixed(3) || '0.000'}s</span>
+														<div class="flex gap-3">
+															<span>Memory: {executionResults[index].memory || 0} KB</span>
+															{#if executionResults[index].status}
+																<span>Status: {executionResults[index].status}</span>
+															{/if}
+														</div>
+													</div>
+												{:else if index === currentExecutingTestCase}
+													<!-- Show skeleton for currently executing test -->
+													<div class="space-y-2">
+														<Skeleton class="h-4 w-full" />
+														<Skeleton class="h-4 w-3/4" />
+														<Skeleton class="h-4 w-1/2" />
+													</div>
+												{:else}
+													<!-- Show placeholder for pending tests -->
+													<div class="text-xs text-muted-foreground">
+														Waiting in queue...
+													</div>
+												{/if}
+											</div>
+										{/each}
+									{:else}
+										<!-- Show completed results -->
+										{#each executionResults as result}
+											<div class="border rounded-lg p-3 {result.passed ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950' : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950'}">
+												<div class="flex items-center justify-between mb-2">
+													<span class="text-sm font-medium">Test Case {result.testCaseIndex}</span>
+													<Badge variant={result.passed ? 'default' : 'destructive'} class="text-xs">
+														{result.passed ? 'PASSED' : 'FAILED'}
+													</Badge>
+												</div>
+												
+												<div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+													<div>
+														<div class="font-medium text-muted-foreground mb-1">Input</div>
+														<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs">{result.input}</div>
+													</div>
+													<div>
+														<div class="font-medium text-muted-foreground mb-1">Expected</div>
+														<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs">{result.expectedOutput}</div>
+													</div>
+													<div>
+														<div class="font-medium text-muted-foreground mb-1">Your Output</div>
+														<div class="bg-background p-2 rounded border max-h-16 overflow-y-auto font-mono text-xs {result.passed ? 'text-green-600' : 'text-red-600'}">{result.actualOutput || 'No output'}</div>
+													</div>
+												</div>
+												
+												{#if result.error}
+													<div class="mt-2">
+														<div class="font-medium text-muted-foreground mb-1 text-xs">Error</div>
+														<div class="bg-red-100 dark:bg-red-950 p-2 rounded border text-xs font-mono text-red-700 dark:text-red-300 max-h-20 overflow-y-auto">{result.error}</div>
+													</div>
+												{/if}
+												
+												<div class="flex justify-between items-center mt-2 text-xs text-muted-foreground">
+													<span>Time: {result.executionTime?.toFixed(3) || '0.000'}s</span>
+													<div class="flex gap-3">
+														<span>Memory: {result.memory || 0} KB</span>
+														{#if result.status}
+															<span>Status: {result.status}</span>
+														{/if}
+													</div>
+												</div>
+											</div>
+										{/each}
+									{/if}
+									
+									<!-- Summary -->
+									{#if !isExecuting && executionResults.length > 0}
+										<div class="bg-muted p-3 rounded-lg mt-3">
+											<div class="text-sm font-medium mb-1">
+												Results: {executionResults.filter(r => r.passed).length}/{executionResults.length} tests passed
+											</div>
+											<div class="text-xs text-muted-foreground">
+												{#if executionResults.every(r => r.passed)}
+													🎉 All tests passed! Great job!
+												{:else if executionResults.some(r => r.passed)}
+													{executionResults.filter(r => r.passed).length} tests passed. Keep working on the remaining ones!
+												{:else}
+													No tests passed. Review the errors and try again.
+												{/if}
+											</div>
+											
+											<!-- Overall stats -->
+											<div class="flex gap-4 mt-2 text-xs text-muted-foreground">
+												<span>Avg Time: {(executionResults.reduce((sum, r) => sum + (r.executionTime || 0), 0) / executionResults.length).toFixed(3)}s</span>
+												<span>Max Memory: {Math.max(...executionResults.map(r => r.memory || 0))} KB</span>
+											</div>
+										</div>
+									{/if}
+								</div>
 							</div>
 						</div>
 					</div>
@@ -800,10 +949,14 @@
 			>
 				{#if isExecuting}
 					<div class="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2"></div>
-					Running Tests...
+					{#if currentExecutingTestCase >= 0}
+						Running Test {currentExecutingTestCase + 1}/{selectedProblemForSubmission?.testCases?.length || 0}
+					{:else}
+						Preparing Tests...
+					{/if}
 				{:else}
 					<PlayIcon size={16} class="mr-2" />
-					Run Tests
+					Run Tests ({selectedProblemForSubmission?.testCases?.length || 0})
 				{/if}
 			</Button>
 		</div>
