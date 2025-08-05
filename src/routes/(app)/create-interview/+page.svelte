@@ -31,6 +31,7 @@
 	} from '@internationalized/date';
 	import { cn } from '$lib/utils.js';
 	import { buttonVariants } from '$lib/components/ui/button/index.js';
+	import { goto } from '$app/navigation';
 
 	const df = new DateFormatter('en-US', {
 		dateStyle: 'medium'
@@ -203,6 +204,7 @@
 			const data = await response.json();
 
 			if (data.success) {
+				goto('/dashboard');
 				success = true;
 				// Reset form
 				intervieweeId = '';

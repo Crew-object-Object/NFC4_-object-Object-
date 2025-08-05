@@ -953,10 +953,11 @@
 			</Card.Root>
 		</div>
 	{:else}
-		<div class="relative flex h-full flex-col">
+		<div class="relative h-full w-full">
 			{#if users.length > 0}
 				{@const remoteUser = users[0]}
-				<div class="relative flex-1 overflow-hidden bg-black">
+				<!-- Full screen video container -->
+				<div class="absolute inset-0 overflow-hidden bg-black">
 					{#if remoteCameraOff}
 						<div
 							class="flex h-full items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800"
@@ -997,36 +998,38 @@
 							</div>
 						</div>
 					{:else}
-						<div class="relative h-full w-full">
+						<div class="h-full w-full">
 							<div
 								id={String(remoteUser.uid)}
 								use:renderVideo={remoteUser}
 								class="h-full w-full"
 							></div>
 						</div>
-
-						<div class="absolute bottom-6 left-6">
-							<div class="rounded-lg bg-black/60 px-3 py-2 backdrop-blur-sm">
-								<span class="text-sm font-medium text-white">
-									{#if remoteUserName}
-										{remoteUserName}
-										{#if isInterviewer}
-											<span class="ml-1 text-xs text-slate-300">(Candidate)</span>
-										{:else if isInterviewee}
-											<span class="ml-1 text-xs text-slate-300">(Interviewer)</span>
-										{/if}
-									{:else if isInterviewer}
-										Candidate
-									{:else if isInterviewee}
-										Interviewer
-									{:else}
-										Participant
-									{/if}
-								</span>
-							</div>
-						</div>
 					{/if}
 
+					<!-- User name overlay -->
+					<div class="absolute bottom-12 left-4">
+						<div class="rounded-lg bg-black/60 px-3 py-2 backdrop-blur-sm">
+							<span class="text-sm font-medium text-white">
+								{#if remoteUserName}
+									{remoteUserName}
+									{#if isInterviewer}
+										<span class="ml-1 text-xs text-slate-300">(Candidate)</span>
+									{:else if isInterviewee}
+										<span class="ml-1 text-xs text-slate-300">(Interviewer)</span>
+									{/if}
+								{:else if isInterviewer}
+									Candidate
+								{:else if isInterviewee}
+									Interviewer
+								{:else}
+									Participant
+								{/if}
+							</span>
+						</div>
+					</div>
+
+					<!-- Remote muted indicator -->
 					{#if remoteMuted}
 						<div class="absolute top-6 right-6">
 							<div
@@ -1037,6 +1040,7 @@
 						</div>
 					{/if}
 
+					<!-- Eye tracking error overlay -->
 					{#if eyeTrackingError}
 						<div class="absolute top-6 left-6">
 							<div class="rounded-lg bg-red-500/90 px-3 py-2 backdrop-blur-sm">
@@ -1045,6 +1049,7 @@
 						</div>
 					{/if}
 
+					<!-- Eye tracking active indicator -->
 					{#if isEyeTrackingActive && isInterviewer}
 						<div class="absolute top-6 left-6">
 							<div class="rounded-lg bg-blue-500/90 px-3 py-2 backdrop-blur-sm">
@@ -1057,8 +1062,9 @@
 					{/if}
 				</div>
 			{:else}
+				<!-- Full screen waiting state -->
 				<div
-					class="flex flex-1 items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800"
+					class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800"
 				>
 					<div class="flex flex-col items-center gap-6 text-center">
 						<div
@@ -1094,48 +1100,51 @@
 				</div>
 			{/if}
 
-			<div class="border-t bg-background/95 backdrop-blur-sm">
-				<div class="flex items-center justify-center gap-4 p-6">
+			<!-- Floating controls overlay at bottom -->
+			<div class="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 transform">
+				<div
+					class="flex items-center justify-center gap-2 rounded-full bg-black/70 px-3 py-2 backdrop-blur-md"
+				>
 					<Button
-						size="lg"
+						size="sm"
 						variant={isCameraOff ? 'destructive' : 'default'}
 						onclick={toggleCamera}
-						class="h-14 w-14 rounded-full"
+						class="h-8 w-8 rounded-full p-0"
 						title={isCameraOff ? 'Turn camera on' : 'Turn camera off'}
 					>
 						{#if isCameraOff}
-							<VideoOff class="h-6 w-6" />
+							<VideoOff class="h-4 w-4" />
 						{:else}
-							<Video class="h-6 w-6" />
+							<Video class="h-4 w-4" />
 						{/if}
 					</Button>
 
 					<Button
-						size="lg"
+						size="sm"
 						variant={isMuted ? 'destructive' : 'default'}
 						onclick={toggleMute}
-						class="h-14 w-14 rounded-full"
+						class="h-8 w-8 rounded-full p-0"
 						title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
 					>
 						{#if isMuted}
-							<MicOff class="h-6 w-6" />
+							<MicOff class="h-4 w-4" />
 						{:else}
-							<Mic class="h-6 w-6" />
+							<Mic class="h-4 w-4" />
 						{/if}
 					</Button>
 
 					{#if role === 'interviewer'}
 						<Button
-							size="lg"
+							size="sm"
 							variant={isEyeTrackingActive ? 'secondary' : 'outline'}
 							onclick={isEyeTrackingActive ? stopEyeTracking : startEyeTracking}
-							class="h-14 w-14 rounded-full"
+							class="h-8 w-8 rounded-full p-0"
 							title={isEyeTrackingActive ? 'Stop Eye Tracking' : 'Start Eye Tracking'}
 						>
 							{#if isEyeTrackingActive}
-								<EyeOff class="h-6 w-6" />
+								<EyeOff class="h-4 w-4" />
 							{:else}
-								<Eye class="h-6 w-6" />
+								<Eye class="h-4 w-4" />
 							{/if}
 						</Button>
 					{/if}
