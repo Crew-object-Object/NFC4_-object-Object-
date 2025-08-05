@@ -1,9 +1,9 @@
 <script lang="ts">
-	import CustomScrollArea from '$lib/components/ui/scroll-area/custom-scroll-area.svelte';
+	import * as Sidebar from '$lib/components/ui/sidebar';
 	import { Separator } from '$lib/components/ui/separator';
-	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import AppSidebar from './_components/app-sidebar.svelte';
 	import LinkBreadcrumbs from './_components/link-breadcrumbs.svelte';
+	import CustomScrollArea from '$lib/components/ui/scroll-area/custom-scroll-area.svelte';
 
 	let { children } = $props();
 </script>
@@ -12,7 +12,7 @@
 	<AppSidebar />
 	<div class="mx-auto flex h-screen w-full flex-col">
 		<header
-			class="bg-background/80 sticky top-0 z-50 flex min-h-12 items-center gap-2 px-4 py-2 backdrop-blur-sm"
+			class="sticky top-0 z-50 flex min-h-12 items-center gap-2 bg-background/80 px-4 py-2 backdrop-blur-sm"
 		>
 			<Sidebar.Trigger />
 			<Separator orientation="vertical" class="mr-2 h-6" />
