@@ -292,7 +292,6 @@
 			// Calculate score based on passed test cases
 			const passedTestCases = executionResults.filter(result => result.passed).length;
 			const totalTestCases = executionResults.length;
-			const score = passedTestCases; // Score is the number of passed test cases
 
 			// Update the problem score in the database
 			try {
@@ -302,7 +301,6 @@
 						'Content-Type': 'application/json'
 					},
 					body: JSON.stringify({
-						score: score,
 						totalTestCases: totalTestCases,
 						passedTestCases: passedTestCases
 					})
@@ -311,23 +309,24 @@
 				const result = await response.json();
 
 				if (result.success) {
-					// Update the local problem score
+					// Update the local problem score with the percentage score from the API
 					interviewProblems = interviewProblems.map(problem => {
 						if (problem.id === selectedProblemForSubmission.id) {
 							return {
 								...problem,
-								score: score
+								score: result.data.score // This is the percentage score from the API
 							};
 						}
 						return problem;
 					});
 
-					console.log(`Problem score updated: ${passedTestCases}/${totalTestCases} test cases passed`);
+					console.log(`Problem score updated: ${passedTestCases}/${totalTestCases} test cases passed (${result.data.percentageScore}%)`);
 
 					// Send notification about score update
 					if (sseClient.isConnected) {
 						const userName = $session.data?.user?.name || 'Interviewee';
-						const message = `📊 ${userName} submitted solution for "${selectedProblemForSubmission.title}" - Score: ${passedTestCases}/${totalTestCases} test cases passed`;
+						const scoreText = result.data.isNewMaxScore ? `NEW HIGH SCORE: ${result.data.percentageScore}%` : `Score: ${result.data.percentageScore}%`;
+						const message = `📊 ${userName} submitted solution for "${selectedProblemForSubmission.title}" - ${scoreText} (${passedTestCases}/${totalTestCases} test cases passed)`;
 						await sseClient.sendMessage(message);
 					}
 				} else {

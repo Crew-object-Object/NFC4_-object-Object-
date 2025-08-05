@@ -5,7 +5,7 @@ import type { RequestHandler } from './$types';
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	try {
 		const { problemId } = params;
-		const { score, totalTestCases, passedTestCases } = await request.json();
+		const { totalTestCases, passedTestCases } = await request.json();
 
 		// Validate input
 		if (!problemId) {
@@ -18,36 +18,62 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			);
 		}
 
-		if (typeof score !== 'number' || score < 0) {
+		if (typeof totalTestCases !== 'number' || typeof passedTestCases !== 'number' || 
+			totalTestCases <= 0 || passedTestCases < 0 || passedTestCases > totalTestCases) {
 			return json(
 				{
 					success: false,
-					error: 'Valid score is required'
+					error: 'Valid test case counts are required'
 				},
 				{ status: 400 }
 			);
 		}
 
-		// Update the problem score in the database
-		const updatedProblem = await prisma.problems.update({
+		// Calculate percentage score
+		const percentageScore = Math.round((passedTestCases / totalTestCases) * 100);
+
+		// Get current problem to check existing score
+		const currentProblem = await prisma.problems.findUnique({
 			where: {
 				id: problemId
-			},
-			data: {
-				score: score
-			},
-			include: {
-				testCases: true,
-				interview: {
-					include: {
-						interviewer: true,
-						interviewee: true
-					}
-				}
 			}
 		});
 
-		console.log(`Problem score updated for problem ${problemId}: ${passedTestCases}/${totalTestCases} test cases passed (score: ${score})`);
+		if (!currentProblem) {
+			return json(
+				{
+					success: false,
+					error: 'Problem not found'
+				},
+				{ status: 404 }
+			);
+		}
+
+		// Only update if new score is higher than current score
+		let updatedProblem = currentProblem;
+		if (percentageScore > currentProblem.score) {
+			updatedProblem = await prisma.problems.update({
+				where: {
+					id: problemId
+				},
+				data: {
+					score: percentageScore
+				},
+				include: {
+					testCases: true,
+					interview: {
+						include: {
+							interviewer: true,
+							interviewee: true
+						}
+					}
+				}
+			});
+
+			console.log(`Problem score updated for problem ${problemId}: ${passedTestCases}/${totalTestCases} test cases passed (new max score: ${percentageScore}%, previous: ${currentProblem.score}%)`);
+		} else {
+			console.log(`Problem score not updated for problem ${problemId}: ${passedTestCases}/${totalTestCases} test cases passed (score: ${percentageScore}%, current max: ${currentProblem.score}%)`);
+		}
 
 		return json({
 			success: true,
@@ -56,7 +82,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				title: updatedProblem.title,
 				score: updatedProblem.score,
 				passedTestCases,
-				totalTestCases
+				totalTestCases,
+				percentageScore,
+				isNewMaxScore: percentageScore > currentProblem.score
 			}
 		});
 	} catch (error) {
