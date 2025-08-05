@@ -5,6 +5,7 @@
 	import InterviewChat from '$lib/components/interview-chat.svelte';
 	import AddProblemDialog from '$lib/components/add-problem-dialog.svelte';
 	import AddTestCaseDialog from '$lib/components/add-test-case-dialog.svelte';
+	import InterviewerChatbot from '$lib/components/interviewer-chatbot.svelte';
 	import { Pane, PaneGroup, PaneResizer } from 'paneforge';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
 	import GripHorizontalIcon from '@lucide/svelte/icons/grip-horizontal';
@@ -290,7 +291,7 @@
 			}
 
 			// Calculate score based on passed test cases
-			const passedTestCases = executionResults.filter(result => result.passed).length;
+			const passedTestCases = executionResults.filter((result) => result.passed).length;
 			const totalTestCases = executionResults.length;
 
 			// Update the problem score in the database
@@ -310,7 +311,7 @@
 
 				if (result.success) {
 					// Update the local problem score with the percentage score from the API
-					interviewProblems = interviewProblems.map(problem => {
+					interviewProblems = interviewProblems.map((problem) => {
 						if (problem.id === selectedProblemForSubmission.id) {
 							return {
 								...problem,
@@ -320,12 +321,16 @@
 						return problem;
 					});
 
-					console.log(`Problem score updated: ${passedTestCases}/${totalTestCases} test cases passed (${result.data.percentageScore}%)`);
+					console.log(
+						`Problem score updated: ${passedTestCases}/${totalTestCases} test cases passed (${result.data.percentageScore}%)`
+					);
 
 					// Send notification about score update
 					if (sseClient.isConnected) {
 						const userName = $session.data?.user?.name || 'Interviewee';
-						const scoreText = result.data.isNewMaxScore ? `NEW HIGH SCORE: ${result.data.percentageScore}%` : `Score: ${result.data.percentageScore}%`;
+						const scoreText = result.data.isNewMaxScore
+							? `NEW HIGH SCORE: ${result.data.percentageScore}%`
+							: `Score: ${result.data.percentageScore}%`;
 						const message = `📊 ${userName} submitted solution for "${selectedProblemForSubmission.title}" - ${scoreText} (${passedTestCases}/${totalTestCases} test cases passed)`;
 						await sseClient.sendMessage(message);
 					}
@@ -368,7 +373,7 @@
 		const hours = Math.floor(seconds / 3600);
 		const mins = Math.floor((seconds % 3600) / 60);
 		const secs = seconds % 60;
-		
+
 		if (hours > 0) {
 			return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 		}
@@ -378,10 +383,10 @@
 	// Format time until start as readable string
 	const formatTimeUntilStart = (seconds: number) => {
 		if (seconds <= 0) return '';
-		
+
 		const hours = Math.floor(seconds / 3600);
 		const mins = Math.floor((seconds % 3600) / 60);
-		
+
 		if (hours > 0) {
 			return `${hours}h ${mins}m`;
 		} else if (mins > 0) {
@@ -425,13 +430,13 @@
 		if (now >= startTime && now <= endTime) {
 			canJoinInterview = true;
 			timeUntilStart = 0;
-			
+
 			// Calculate elapsed time since start
 			const elapsedMs = now.getTime() - startTime.getTime();
 			elapsedTime = Math.floor(elapsedMs / 1000);
 		} else if (now < startTime) {
 			canJoinInterview = false;
-			
+
 			// Calculate time until start
 			const timeUntilMs = startTime.getTime() - now.getTime();
 			timeUntilStart = Math.floor(timeUntilMs / 1000);
@@ -439,7 +444,7 @@
 			// Interview has ended
 			canJoinInterview = false;
 			timeUntilStart = 0;
-			
+
 			// Calculate total duration
 			const totalMs = endTime.getTime() - startTime.getTime();
 			elapsedTime = Math.floor(totalMs / 1000);
@@ -449,7 +454,7 @@
 	// Start the interview timer
 	const startInterviewTimer = () => {
 		if (timerInterval) return;
-		
+
 		timerInterval = setInterval(() => {
 			checkInterviewTiming();
 		}, 1000);
@@ -493,12 +498,14 @@
 			if (result.success) {
 				stopInterviewTimer();
 				showEndInterviewDialog = false;
-				
+
 				// Send notification through SSE
 				if (sseClient.isConnected) {
-					await sseClient.sendMessage(`🎉 Interview has been ended by the interviewer. Final Score: ${score}%`);
+					await sseClient.sendMessage(
+						`🎉 Interview has been ended by the interviewer. Final Score: ${score}%`
+					);
 				}
-				
+
 				// Redirect to dashboard after a short delay
 				setTimeout(() => {
 					goto('/dashboard');
@@ -543,7 +550,7 @@
 	};
 
 	const handleTestCaseAdded = (data: TestCaseAddedMessage) => {
-		interviewProblems = interviewProblems.map(problem => {
+		interviewProblems = interviewProblems.map((problem) => {
 			if (problem.id === data.problemId) {
 				return {
 					...problem,
@@ -559,12 +566,12 @@
 		// If this is a system alert and the current user is the interviewer
 		if (isInterviewer && message.content && message.content.includes('SYSTEM ALERT')) {
 			console.log('System alert received by interviewer:', message.content);
-			
+
 			// You could add additional notifications here, like:
 			// - Browser notifications
 			// - Sound alerts
 			// - Visual highlights
-			
+
 			// For now, just log it prominently
 			if (message.content.includes('switched tabs')) {
 				console.warn('🚨 INTERVIEWER ALERT: Candidate switched tabs/applications!');
@@ -595,7 +602,7 @@
 		if (!$session.isPending) {
 			isInterviewer = $session.data?.user.role === 'Interviewer';
 			isInterviewee = !isInterviewer;
-			
+
 			// Fetch interview details and start timer when user role is determined
 			if (browser && !timerInterval) {
 				fetchInterviewDetails();
@@ -611,7 +618,7 @@
 			setupTabDetection();
 		}
 	});
-	
+
 	// Tab switching detection for interviewees
 	let isTabVisible = $state(true);
 	let isWindowFocused = $state(true);
@@ -648,7 +655,7 @@
 		if (!roomId || !isInterviewee) return;
 
 		const currentTime = Date.now();
-		
+
 		// Prevent multiple rapid notifications (debounce with 2 seconds)
 		if (currentTime - lastPasteTime < 2000) {
 			console.log('Paste notification ignored due to debouncing');
@@ -689,7 +696,7 @@
 		// Only track when tab becomes hidden (user switched away)
 		if (isTabVisible && !isCurrentlyVisible) {
 			console.log('Tab switch detected (visibility)');
-			
+
 			// Prevent multiple rapid notifications (debounce with 1 second)
 			if (currentTime - lastTabSwitchTime < 1000) {
 				console.log('Tab switch ignored due to debouncing');
@@ -756,12 +763,12 @@
 		// Detect Alt+Tab (Windows/Linux) or Cmd+Tab (Mac)
 		const isAltTab = event.altKey && event.key === 'Tab';
 		const isCmdTab = event.metaKey && event.key === 'Tab';
-		
+
 		if (isAltTab || isCmdTab) {
 			console.log('App switching keyboard shortcut detected:', { isAltTab, isCmdTab });
-			
+
 			const currentTime = Date.now();
-			
+
 			// Prevent multiple rapid notifications
 			if (currentTime - lastTabSwitchTime < 1000) {
 				return;
@@ -779,7 +786,7 @@
 
 	const setupTabDetection = () => {
 		if (!browser) return;
-		
+
 		console.log('Setting up tab detection event listeners');
 
 		// Listen for visibility changes (tab switches within browser)
@@ -878,7 +885,7 @@
 				</div>
 				<Skeleton class="h-8 w-24" />
 			</div>
-			
+
 			<div class="flex h-full">
 				<!-- Editor Section Skeleton -->
 				<div class="flex-1 border-r">
@@ -889,27 +896,27 @@
 							<Skeleton class="h-6 w-20" />
 						</div>
 						<!-- Editor Content -->
-						<div class="flex-1 p-4 space-y-2">
+						<div class="flex-1 space-y-2 p-4">
 							<Skeleton class="h-4 w-full" />
 							<Skeleton class="h-4 w-3/4" />
 							<Skeleton class="h-4 w-1/2" />
 							<Skeleton class="h-4 w-5/6" />
 						</div>
-						
+
 						<!-- Test Cases Section -->
 						<div class="border-t">
 							<div class="flex items-center justify-between border-b px-4 py-2">
 								<Skeleton class="h-4 w-32" />
 								<Skeleton class="h-6 w-20" />
 							</div>
-							<div class="p-4 space-y-3">
+							<div class="space-y-3 p-4">
 								<Skeleton class="h-16 w-full" />
 								<Skeleton class="h-16 w-full" />
 							</div>
 						</div>
 					</div>
 				</div>
-				
+
 				<!-- Right Panel Skeleton -->
 				<div class="w-96">
 					<div class="flex h-full flex-col">
@@ -917,9 +924,9 @@
 						<div class="flex-1 border-b p-4">
 							<Skeleton class="h-full w-full rounded-lg" />
 						</div>
-						
+
 						<!-- Chat Section -->
-						<div class="flex-1 p-4 space-y-2">
+						<div class="flex-1 space-y-2 p-4">
 							<Skeleton class="h-4 w-16" />
 							<Skeleton class="h-8 w-full" />
 							<Skeleton class="h-8 w-3/4" />
@@ -932,19 +939,17 @@
 	{:else if !canJoinInterview && timeUntilStart > 0}
 		<!-- Interview hasn't started yet -->
 		<div class="flex h-full items-center justify-center">
-			<div class="text-center space-y-4 p-8 rounded-lg border bg-card">
+			<div class="space-y-4 rounded-lg border bg-card p-8 text-center">
 				<div class="flex items-center justify-center gap-2 text-muted-foreground">
 					<Timer size={24} />
 					<h2 class="text-xl font-semibold">Interview Not Started</h2>
 				</div>
-				<p class="text-muted-foreground">
-					The interview is scheduled to start in:
-				</p>
-				<div class="text-3xl font-mono font-bold text-primary">
+				<p class="text-muted-foreground">The interview is scheduled to start in:</p>
+				<div class="font-mono text-3xl font-bold text-primary">
 					{formatTimeUntilStart(timeUntilStart)}
 				</div>
 				{#if interview}
-					<div class="text-sm text-muted-foreground space-y-1">
+					<div class="space-y-1 text-sm text-muted-foreground">
 						<p><strong>Title:</strong> {interview.interviewTitle}</p>
 						<p><strong>Start Time:</strong> {new Date(interview.startTime).toLocaleString()}</p>
 						<p><strong>End Time:</strong> {new Date(interview.endTime).toLocaleString()}</p>
@@ -958,24 +963,20 @@
 	{:else if !canJoinInterview && timeUntilStart === 0}
 		<!-- Interview has ended -->
 		<div class="flex h-full items-center justify-center">
-			<div class="text-center space-y-4 p-8 rounded-lg border bg-card">
+			<div class="space-y-4 rounded-lg border bg-card p-8 text-center">
 				<div class="flex items-center justify-center gap-2 text-muted-foreground">
 					<Clock size={24} />
 					<h2 class="text-xl font-semibold">Interview Ended</h2>
 				</div>
-				<p class="text-muted-foreground">
-					This interview has already ended.
-				</p>
+				<p class="text-muted-foreground">This interview has already ended.</p>
 				{#if interview}
-					<div class="text-sm text-muted-foreground space-y-1">
+					<div class="space-y-1 text-sm text-muted-foreground">
 						<p><strong>Title:</strong> {interview.interviewTitle}</p>
 						<p><strong>Duration:</strong> {formatElapsedTime(elapsedTime)}</p>
 						<p><strong>Status:</strong> {interview.status}</p>
 					</div>
 				{/if}
-				<Button href="/dashboard" variant="outline">
-					Back to Dashboard
-				</Button>
+				<Button href="/dashboard" variant="outline">Back to Dashboard</Button>
 			</div>
 		</div>
 	{:else}
@@ -1004,8 +1005,8 @@
 							{/if}
 						</div>
 					</div>
-					<Button 
-						variant="destructive" 
+					<Button
+						variant="destructive"
 						size="sm"
 						class="gap-2"
 						onclick={() => {
@@ -1021,251 +1022,255 @@
 				</div>
 			{/if}
 
-		<PaneGroup direction="horizontal">
-			<!-- Editor Section -->
-			<Pane defaultSize={60} minSize={40}>
-				<PaneGroup direction="vertical">
-					<!-- Code Editor -->
-					<Pane defaultSize={75} minSize={50}>
-						<div class="flex h-full flex-col bg-background">
-							<div class="flex items-center justify-between border-b px-4 py-2">
-								<div class="flex items-center gap-2">
-									<CodeIcon size={16} />
-									<h3 class="text-sm font-medium">Code Editor</h3>
-									{#if isInterviewee && (tabSwitchCount > 0 || pasteCount > 0)}
-										<div class="flex items-center gap-2">
-											{#if tabSwitchCount > 0}
-												<Badge
-													variant="outline"
-													class="bg-orange-50 text-xs text-orange-600 dark:bg-orange-950 dark:text-orange-400"
-													title="Number of times you've switched tabs (visible to interviewer)"
-												>
-													Tab switches: {tabSwitchCount}
-												</Badge>
-											{/if}
-											{#if pasteCount > 0}
-												<Badge
-													variant="outline"
-													class="bg-red-50 text-xs text-red-600 dark:bg-red-950 dark:text-red-400"
-													title="Number of times you've pasted content (visible to interviewer)"
-												>
-													Paste events: {pasteCount}
-												</Badge>
-											{/if}
-										</div>
-									{/if}
-								</div>
-								{#if isInterviewee}
+			<PaneGroup direction="horizontal">
+				<!-- Editor Section -->
+				<Pane defaultSize={60} minSize={40}>
+					<PaneGroup direction="vertical">
+						<!-- Code Editor -->
+						<Pane defaultSize={75} minSize={50}>
+							<div class="flex h-full flex-col bg-background">
+								<div class="flex items-center justify-between border-b px-4 py-2">
 									<div class="flex items-center gap-2">
-										<Button
-											size="sm"
-											variant="outline"
-											class="h-8 px-2 text-xs"
-											onclick={() => (showSubmissionDialog = true)}
-											disabled={!currentCode.trim() || interviewProblems.length === 0}
-										>
-											<PlayIcon size={12} class="mr-1" />
-											Run Tests
-										</Button>
+										<CodeIcon size={16} />
+										<h3 class="text-sm font-medium">Code Editor</h3>
+										{#if isInterviewee && (tabSwitchCount > 0 || pasteCount > 0)}
+											<div class="flex items-center gap-2">
+												{#if tabSwitchCount > 0}
+													<Badge
+														variant="outline"
+														class="bg-orange-50 text-xs text-orange-600 dark:bg-orange-950 dark:text-orange-400"
+														title="Number of times you've switched tabs (visible to interviewer)"
+													>
+														Tab switches: {tabSwitchCount}
+													</Badge>
+												{/if}
+												{#if pasteCount > 0}
+													<Badge
+														variant="outline"
+														class="bg-red-50 text-xs text-red-600 dark:bg-red-950 dark:text-red-400"
+														title="Number of times you've pasted content (visible to interviewer)"
+													>
+														Paste events: {pasteCount}
+													</Badge>
+												{/if}
+											</div>
+										{/if}
 									</div>
-								{/if}
-							</div>
-							<div class="flex-1 p-4">
-								<TiptapEditor 
-									{roomId} 
-									onContentChange={handleCodeChange} 
-									{isInterviewee}
-									onPasteDetected={sendPasteNotification}
-								/>
-							</div>
-						</div>
-					</Pane>
-
-					<PaneResizer
-						class="group flex h-2 items-center justify-center bg-border transition-colors hover:bg-accent"
-					>
-						<div class="opacity-60 transition-opacity group-hover:opacity-100">
-							<GripHorizontalIcon size={16} />
-						</div>
-					</PaneResizer>
-
-					<!-- Test Cases Section -->
-					<Pane defaultSize={25} minSize={20}>
-						<div class="flex h-full flex-col bg-background">
-							<div class="flex items-center justify-between border-b px-4 py-2">
-								<div class="flex items-center gap-2">
-									<FlaskConicalIcon size={16} />
-									<h3 class="text-sm font-medium">Problems & Test Cases</h3>
-								</div>
-								<div class="flex items-center gap-2">
-									{#if isInterviewer}
-										<Button
-											size="sm"
-											variant="outline"
-											class="h-8 px-2 text-xs"
-											onclick={() => (showProblemDialog = true)}
-										>
-											<PlusIcon size={12} class="mr-1" />
-											Add Problem
-										</Button>
-									{/if}
-									<!-- Connection Status -->
-									{#if !isInterviewer}
-										<div class="flex items-center gap-1">
-											{#if sseConnected}
-												<div class="flex items-center gap-1">
-													<div class="h-2 w-2 rounded-full bg-green-500"></div>
-													<span class="text-xs text-green-600">Live</span>
-												</div>
-											{:else}
-												<div class="flex items-center gap-1">
-													<div class="h-2 w-2 rounded-full bg-red-500"></div>
-													<span class="text-xs text-red-600">
-														{connectionError || 'Offline'}
-													</span>
-												</div>
-											{/if}
+									{#if isInterviewee}
+										<div class="flex items-center gap-2">
+											<Button
+												size="sm"
+												variant="outline"
+												class="h-8 px-2 text-xs"
+												onclick={() => (showSubmissionDialog = true)}
+												disabled={!currentCode.trim() || interviewProblems.length === 0}
+											>
+												<PlayIcon size={12} class="mr-1" />
+												Run Tests
+											</Button>
 										</div>
 									{/if}
 								</div>
+								<div class="flex-1 p-4">
+									<TiptapEditor
+										{roomId}
+										onContentChange={handleCodeChange}
+										{isInterviewee}
+										onPasteDetected={sendPasteNotification}
+									/>
+								</div>
 							</div>
-							<div class="flex-1 overflow-y-auto p-2">
-								{#if interviewProblems.length === 0}
-									<div class="py-8 text-center text-sm text-muted-foreground">
-										<FlaskConicalIcon size={32} class="mx-auto mb-2 opacity-50" />
-										<p>No problems added yet.</p>
+						</Pane>
+
+						<PaneResizer
+							class="group flex h-2 items-center justify-center bg-border transition-colors hover:bg-accent"
+						>
+							<div class="opacity-60 transition-opacity group-hover:opacity-100">
+								<GripHorizontalIcon size={16} />
+							</div>
+						</PaneResizer>
+
+						<!-- Test Cases Section -->
+						<Pane defaultSize={25} minSize={20}>
+							<div class="flex h-full flex-col bg-background">
+								<div class="flex items-center justify-between border-b px-4 py-2">
+									<div class="flex items-center gap-2">
+										<FlaskConicalIcon size={16} />
+										<h3 class="text-sm font-medium">Problems & Test Cases</h3>
+									</div>
+									<div class="flex items-center gap-2">
 										{#if isInterviewer}
 											<Button
 												size="sm"
 												variant="outline"
-												class="mt-2"
+												class="h-8 px-2 text-xs"
 												onclick={() => (showProblemDialog = true)}
 											>
-												Add First Problem
+												<PlusIcon size={12} class="mr-1" />
+												Add Problem
 											</Button>
 										{/if}
-									</div>
-								{:else}
-									<div class="space-y-3">
-										{#each interviewProblems as problem}
-											<div class="rounded-lg border p-3">
-												<div class="mb-2 flex items-start justify-between">
-													<div class="flex-1">
-														<div class="flex items-center gap-2">
-															<h4 class="text-sm font-semibold">{problem.title}</h4>
-															{#if problem.score > 0 || isInterviewee}
-																<Badge 
-																	variant={problem.score === problem.testCases.length ? 'default' : problem.score > 0 ? 'secondary' : 'outline'}
-																	class="text-xs"
-																>
-																	Score: {problem.score}/{problem.testCases.length}
-																</Badge>
-															{/if}
-														</div>
-														<p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
-															{problem.description}
-														</p>
-													</div>
-													{#if isInterviewer}
-														<Button
-															size="sm"
-															variant="ghost"
-															class="h-6 px-1 text-xs"
-															onclick={() => {
-																selectedInterviewProblem = problem;
-																showAddTestCaseDialog = true;
-															}}
-														>
-															<PlusIcon size={10} />
-														</Button>
-													{/if}
-												</div>
-
-												{#if problem.testCases.length > 0}
-													<div class="space-y-2">
-														{#each problem.testCases as testCase, index}
-															<div class="rounded border bg-muted/50 p-2">
-																<div class="mb-1 flex items-center justify-between">
-																	<span class="text-xs font-medium text-muted-foreground"
-																		>Test Case {index + 1}</span
-																	>
-																	<div class="h-2 w-2 rounded-full bg-gray-400"></div>
-																</div>
-																<div class="grid grid-cols-2 gap-1">
-																	<div>
-																		<div class="mb-1 text-xs font-medium text-muted-foreground">
-																			Input
-																		</div>
-																		<div
-																			class="max-h-12 overflow-y-auto rounded border bg-background p-1 text-xs"
-																		>
-																			{testCase.input}
-																		</div>
-																	</div>
-																	<div>
-																		<div class="mb-1 text-xs font-medium text-muted-foreground">
-																			Expected
-																		</div>
-																		<div
-																			class="max-h-12 overflow-y-auto rounded border bg-background p-1 text-xs"
-																		>
-																			{testCase.output}
-																		</div>
-																	</div>
-																</div>
-															</div>
-														{/each}
+										<!-- Connection Status -->
+										{#if !isInterviewer}
+											<div class="flex items-center gap-1">
+												{#if sseConnected}
+													<div class="flex items-center gap-1">
+														<div class="h-2 w-2 rounded-full bg-green-500"></div>
+														<span class="text-xs text-green-600">Live</span>
 													</div>
 												{:else}
-													<div class="py-2 text-center text-xs text-muted-foreground">
-														No test cases added yet.
+													<div class="flex items-center gap-1">
+														<div class="h-2 w-2 rounded-full bg-red-500"></div>
+														<span class="text-xs text-red-600">
+															{connectionError || 'Offline'}
+														</span>
 													</div>
 												{/if}
 											</div>
-										{/each}
+										{/if}
 									</div>
-								{/if}
+								</div>
+								<div class="flex-1 overflow-y-auto p-2">
+									{#if interviewProblems.length === 0}
+										<div class="py-8 text-center text-sm text-muted-foreground">
+											<FlaskConicalIcon size={32} class="mx-auto mb-2 opacity-50" />
+											<p>No problems added yet.</p>
+											{#if isInterviewer}
+												<Button
+													size="sm"
+													variant="outline"
+													class="mt-2"
+													onclick={() => (showProblemDialog = true)}
+												>
+													Add First Problem
+												</Button>
+											{/if}
+										</div>
+									{:else}
+										<div class="space-y-3">
+											{#each interviewProblems as problem}
+												<div class="rounded-lg border p-3">
+													<div class="mb-2 flex items-start justify-between">
+														<div class="flex-1">
+															<div class="flex items-center gap-2">
+																<h4 class="text-sm font-semibold">{problem.title}</h4>
+																{#if problem.score > 0 || isInterviewee}
+																	<Badge
+																		variant={problem.score === problem.testCases.length
+																			? 'default'
+																			: problem.score > 0
+																				? 'secondary'
+																				: 'outline'}
+																		class="text-xs"
+																	>
+																		Score: {problem.score}/{problem.testCases.length}
+																	</Badge>
+																{/if}
+															</div>
+															<p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
+																{problem.description}
+															</p>
+														</div>
+														{#if isInterviewer}
+															<Button
+																size="sm"
+																variant="ghost"
+																class="h-6 px-1 text-xs"
+																onclick={() => {
+																	selectedInterviewProblem = problem;
+																	showAddTestCaseDialog = true;
+																}}
+															>
+																<PlusIcon size={10} />
+															</Button>
+														{/if}
+													</div>
+
+													{#if problem.testCases.length > 0}
+														<div class="space-y-2">
+															{#each problem.testCases as testCase, index}
+																<div class="rounded border bg-muted/50 p-2">
+																	<div class="mb-1 flex items-center justify-between">
+																		<span class="text-xs font-medium text-muted-foreground"
+																			>Test Case {index + 1}</span
+																		>
+																		<div class="h-2 w-2 rounded-full bg-gray-400"></div>
+																	</div>
+																	<div class="grid grid-cols-2 gap-1">
+																		<div>
+																			<div class="mb-1 text-xs font-medium text-muted-foreground">
+																				Input
+																			</div>
+																			<div
+																				class="max-h-12 overflow-y-auto rounded border bg-background p-1 text-xs"
+																			>
+																				{testCase.input}
+																			</div>
+																		</div>
+																		<div>
+																			<div class="mb-1 text-xs font-medium text-muted-foreground">
+																				Expected
+																			</div>
+																			<div
+																				class="max-h-12 overflow-y-auto rounded border bg-background p-1 text-xs"
+																			>
+																				{testCase.output}
+																			</div>
+																		</div>
+																	</div>
+																</div>
+															{/each}
+														</div>
+													{:else}
+														<div class="py-2 text-center text-xs text-muted-foreground">
+															No test cases added yet.
+														</div>
+													{/if}
+												</div>
+											{/each}
+										</div>
+									{/if}
+								</div>
 							</div>
-						</div>
-					</Pane>
-				</PaneGroup>
-			</Pane>
+						</Pane>
+					</PaneGroup>
+				</Pane>
 
-			<PaneResizer
-				class="group flex w-2 items-center justify-center bg-border transition-colors hover:bg-accent"
-			>
-				<div class="opacity-60 transition-opacity group-hover:opacity-100">
-					<GripVerticalIcon size={16} />
-				</div>
-			</PaneResizer>
+				<PaneResizer
+					class="group flex w-2 items-center justify-center bg-border transition-colors hover:bg-accent"
+				>
+					<div class="opacity-60 transition-opacity group-hover:opacity-100">
+						<GripVerticalIcon size={16} />
+					</div>
+				</PaneResizer>
 
-			<!-- Right Side Panel -->
-			<Pane defaultSize={40} minSize={30}>
-				<PaneGroup direction="vertical">
-					<!-- Video Section -->
-					<Pane defaultSize={50} minSize={25}>
-						{#if roomId}
-							<VideoCall {roomId} />
-						{/if}
-					</Pane>
+				<!-- Right Side Panel -->
+				<Pane defaultSize={40} minSize={30}>
+					<PaneGroup direction="vertical">
+						<!-- Video Section -->
+						<Pane defaultSize={50} minSize={25}>
+							{#if roomId}
+								<VideoCall {roomId} />
+							{/if}
+						</Pane>
 
-					<PaneResizer
-						class="group flex h-2 items-center justify-center bg-border transition-colors hover:bg-accent"
-					>
-						<div class="opacity-60 transition-opacity group-hover:opacity-100">
-							<GripHorizontalIcon size={16} />
-						</div>
-					</PaneResizer>
+						<PaneResizer
+							class="group flex h-2 items-center justify-center bg-border transition-colors hover:bg-accent"
+						>
+							<div class="opacity-60 transition-opacity group-hover:opacity-100">
+								<GripHorizontalIcon size={16} />
+							</div>
+						</PaneResizer>
 
-					<!-- Chat Section -->
-					<Pane defaultSize={50} minSize={25}>
-						{#if roomId}
-							<InterviewChat {roomId} />
-						{/if}
-					</Pane>
-				</PaneGroup>
-			</Pane>
-		</PaneGroup>
+						<!-- Chat Section -->
+						<Pane defaultSize={50} minSize={25}>
+							{#if roomId}
+								<InterviewChat {roomId} />
+							{/if}
+						</Pane>
+					</PaneGroup>
+				</Pane>
+			</PaneGroup>
 		</div>
 	{/if}
 </main>
@@ -1321,7 +1326,8 @@
 					<Select.Content>
 						{#each interviewProblems as problem}
 							<Select.Item value={problem.id}>
-								{problem.title} ({problem.testCases.length} test cases) - Score: {problem.score}/{problem.testCases.length}
+								{problem.title} ({problem.testCases.length} test cases) - Score: {problem.score}/{problem
+									.testCases.length}
 							</Select.Item>
 						{/each}
 					</Select.Content>
@@ -1623,8 +1629,11 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>End Interview & Score Candidate</AlertDialog.Title>
 			<AlertDialog.Description class="space-y-4">
-				<p>You are about to end this interview. Please provide a final score for the candidate's performance.</p>
-				
+				<p>
+					You are about to end this interview. Please provide a final score for the candidate's
+					performance.
+				</p>
+
 				<div class="rounded-lg bg-muted p-3">
 					<div class="flex items-center gap-2 text-sm">
 						<Clock size={16} />
@@ -1636,9 +1645,7 @@
 				</div>
 
 				<div class="space-y-2">
-					<Label for="interview-score" class="text-sm font-medium">
-						Final Score (0-100%)
-					</Label>
+					<Label for="interview-score" class="text-sm font-medium">Final Score (0-100%)</Label>
 					<Input
 						id="interview-score"
 						type="number"
@@ -1661,17 +1668,21 @@
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel onclick={() => {
-				interviewScore = '';
-				scoreError = '';
-			}}>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action 
+			<AlertDialog.Cancel
+				onclick={() => {
+					interviewScore = '';
+					scoreError = '';
+				}}>Cancel</AlertDialog.Cancel
+			>
+			<AlertDialog.Action
 				onclick={endInterview}
 				disabled={isEndingInterview || !interviewScore}
-				class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+				class="text-destructive-foreground bg-destructive hover:bg-destructive/90"
 			>
 				{#if isEndingInterview}
-					<div class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-destructive-foreground border-t-transparent"></div>
+					<div
+						class="border-destructive-foreground mr-2 h-4 w-4 animate-spin rounded-full border-2 border-t-transparent"
+					></div>
 					Ending Interview...
 				{:else}
 					<PhoneOff size={16} class="mr-2" />
@@ -1681,3 +1692,8 @@
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>
+
+<!-- AI Chatbot for Interviewers -->
+{#if isInterviewer}
+	<InterviewerChatbot {currentCode} roomId={roomId!} />
+{/if}
