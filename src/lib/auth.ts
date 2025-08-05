@@ -15,5 +15,15 @@ export const auth = betterAuth({
 			clientId: GOOGLE_CLIENT_ID!,
 			clientSecret: GOOGLE_CLIENT_SECRET!
 		}
+	},
+	user: {
+		additionalFields: {
+			role: {
+				input: false,
+				type: 'string',
+				required: false,
+				defaultValue: 'Interviewee'
+			}
+		}
 	}
 });
