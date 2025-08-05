@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import VideoCall from '$lib/components/video-call.svelte';
 	import TiptapEditor from '$lib/components/tiptap.svelte';
 	import InterviewChat from '$lib/components/interview-chat.svelte';
+	import AddProblemDialog from '$lib/components/add-problem-dialog.svelte';
+	import AddTestCaseDialog from '$lib/components/add-test-case-dialog.svelte';
 	import { Pane, PaneGroup, PaneResizer } from 'paneforge';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
 	import GripHorizontalIcon from '@lucide/svelte/icons/grip-horizontal';
@@ -22,7 +23,9 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { Problem } from '$lib/problemset';
 	import { browser } from '$app/environment';
+	import { authClient, useSession } from '$lib/auth-client';
 	import { sseClient } from '$lib/sse-client';
+	import { onDestroy } from 'svelte';
 
 	interface InterviewProblem {
 		id: string;
@@ -37,20 +40,15 @@
 	}
 
 	// Problem management state
-	let availableProblems: Problem[] = [];
-	let interviewProblems: InterviewProblem[] = [];
-	let showProblemDialog = false;
-	let showAddTestCaseDialog = false;
-	let selectedProblem: Problem | null = null;
-	let selectedInterviewProblem: InterviewProblem | null = null;
-	let customProblemTitle = '';
-	let customProblemDescription = '';
-	let newTestCaseInput = '';
-	let newTestCaseOutput = '';
-	let isLoadingProblems = false;
+	let availableProblems = $state<Problem[]>([]);
+	let interviewProblems = $state<InterviewProblem[]>([]);
+	let showProblemDialog = $state(false);
+	let showAddTestCaseDialog = $state(false);
+	let selectedInterviewProblem = $state<InterviewProblem | null>(null);
+	let isLoadingProblems = $state(false);
 
 	// Get room ID from URL
-	$: roomId = $page.params.roomId;
+	const roomId = $derived($page.params.roomId);
 
 	// Fetch available problems from problemset
 	const fetchAvailableProblems = async () => {
@@ -87,10 +85,11 @@
 	};
 
 	// Add selected problem from problemset to interview
-	const addProblemFromSet = async () => {
-		if (!selectedProblem || !roomId || isLoadingProblems) return;
+	const handleAddProblemFromSet = async (event: CustomEvent<{ problem: Problem }>) => {
+		if (!roomId || isLoadingProblems) return;
 
 		isLoadingProblems = true;
+		const { problem } = event.detail;
 
 		try {
 			const response = await fetch(`/api/interviews/${roomId}/problems`, {
@@ -99,9 +98,9 @@
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					title: selectedProblem.title,
-					description: selectedProblem.description,
-					testCases: selectedProblem.testCases
+					title: problem.title,
+					description: problem.description,
+					testCases: problem.testCases
 				})
 			});
 
@@ -110,7 +109,6 @@
 			if (result.success) {
 				await fetchInterviewProblems();
 				showProblemDialog = false;
-				selectedProblem = null;
 			} else {
 				console.error('Failed to add problem:', result.error);
 			}
@@ -122,16 +120,13 @@
 	};
 
 	// Add custom problem to interview
-	const addCustomProblem = async () => {
-		if (
-			!customProblemTitle.trim() ||
-			!customProblemDescription.trim() ||
-			!roomId ||
-			isLoadingProblems
-		)
-			return;
+	const handleAddCustomProblem = async (
+		event: CustomEvent<{ title: string; description: string }>
+	) => {
+		if (!roomId || isLoadingProblems) return;
 
 		isLoadingProblems = true;
+		const { title, description } = event.detail;
 
 		try {
 			const response = await fetch(`/api/interviews/${roomId}/problems`, {
@@ -140,8 +135,8 @@
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					title: customProblemTitle.trim(),
-					description: customProblemDescription.trim(),
+					title: title,
+					description: description,
 					testCases: []
 				})
 			});
@@ -151,8 +146,6 @@
 			if (result.success) {
 				await fetchInterviewProblems();
 				showProblemDialog = false;
-				customProblemTitle = '';
-				customProblemDescription = '';
 			} else {
 				console.error('Failed to add custom problem:', result.error);
 			}
@@ -164,26 +157,23 @@
 	};
 
 	// Add test case to problem
-	const addTestCase = async () => {
-		if (
-			!selectedInterviewProblem ||
-			!newTestCaseInput.trim() ||
-			!newTestCaseOutput.trim() ||
-			isLoadingProblems
-		)
-			return;
+	const handleAddTestCase = async (
+		event: CustomEvent<{ input: string; output: string; problemId: string }>
+	) => {
+		if (isLoadingProblems) return;
 
 		isLoadingProblems = true;
+		const { input, output, problemId } = event.detail;
 
 		try {
-			const response = await fetch(`/api/problems/${selectedInterviewProblem.id}/testcases`, {
+			const response = await fetch(`/api/problems/${problemId}/testcases`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					input: newTestCaseInput.trim(),
-					output: newTestCaseOutput.trim()
+					input: input,
+					output: output
 				})
 			});
 
@@ -193,8 +183,6 @@
 				await fetchInterviewProblems();
 				showAddTestCaseDialog = false;
 				selectedInterviewProblem = null;
-				newTestCaseInput = '';
-				newTestCaseOutput = '';
 			} else {
 				console.error('Failed to add test case:', result.error);
 			}
@@ -206,13 +194,13 @@
 	};
 
 	// State for code execution
-	let currentCode = '';
-	let selectedProblemForSubmission: any = null;
-	let selectedTestCase: any = null;
-	let isExecuting = false;
-	let executionResults: any[] = [];
-	let currentExecutingTestCase = -1; // Track which test case is currently executing
-	let showSubmissionDialog = false;
+	let currentCode = $state('');
+	let selectedProblemForSubmission = $state<any>(null);
+	let selectedTestCase = $state<any>(null);
+	let isExecuting = $state(false);
+	let executionResults = $state<any[]>([]);
+	let currentExecutingTestCase = $state(-1); // Track which test case is currently executing
+	let showSubmissionDialog = $state(false);
 
 	// Function to handle code content changes from TiptapEditor
 	const handleCodeChange = (code: string) => {
@@ -306,34 +294,24 @@
 		}
 	};
 
+	const session = useSession();
+
 	// Check if current user is interviewer
-	const isInterviewer = () => {
-		// For now, we'll implement a simple role check
-		// You can modify this logic based on your authentication/role system
-
-		// Option 1: Check URL parameter (e.g., ?role=interviewer)
-		if (!browser) return false; // Ensure this runs only in browser context
-		const urlParams = new URLSearchParams(window.location.search);
-		const role = urlParams.get('role');
-		if (role === 'interviewer') return true;
-
-		// Option 2: For testing interviewee view, return false
-		// Change this to true if you want to test interviewer view
-		return false;
-
-		// Option 3: For production, implement proper authentication logic here
-		// Example: return currentUser?.role === 'interviewer';
-	};
+	let isInterviewer = $state(false);
 
 	// Check if current user is interviewee
-	const isInterviewee = () => {
-		// Interviewee is anyone who is NOT an interviewer
-		return !isInterviewer();
-	};
+	let isInterviewee = $state(false);
 
+	$effect(() => {
+		if (!$session.isPending) {
+			isInterviewer = $session.data?.user.role === 'Interviewer';
+			isInterviewee = !isInterviewer;
+		}
+	});
+	
 	// Tab switching detection for interviewees
 	let isTabVisible = true;
-	let tabSwitchCount = 0;
+	let tabSwitchCount = $state(0);
 	let sseConnected = false;
 	let lastTabSwitchTime = 0;
 	let tabSwitchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -347,12 +325,12 @@
 		console.log('Visibility change:', {
 			isCurrentlyVisible,
 			isTabVisible,
-			isInterviewee: isInterviewee(),
+			isInterviewee: isInterviewee,
 			roomId
 		});
 
 		// Only track tab switches for interviewees and when tab becomes hidden
-		if (isInterviewee() && isTabVisible && !isCurrentlyVisible) {
+		if (isInterviewee && isTabVisible && !isCurrentlyVisible) {
 			console.log('Tab switch detected for interviewee');
 			
 			// Prevent multiple rapid notifications (debounce with 2 seconds)
@@ -407,7 +385,7 @@
 
 		// Also listen for blur/focus events as additional detection
 		window.addEventListener('blur', () => {
-			if (isInterviewee()) {
+			if (isInterviewee) {
 				console.log('Window blur detected for interviewee');
 				setTimeout(handleVisibilityChange, 100); // Small delay to ensure proper state
 			}
@@ -438,7 +416,7 @@
 
 	// Initialize SSE connection for tab switching notifications
 	const initializeSSEForTabDetection = async () => {
-		if (!roomId || !isInterviewee()) return;
+		if (!roomId || !isInterviewee) return;
 
 		try {
 			if (!sseClient.isConnected) {
@@ -451,22 +429,22 @@
 		}
 	};
 
-	onMount(() => {
+	$effect(() => {
 		if (roomId) {
 			// Debug role detection
 			console.log('User role detection:', {
-				isInterviewer: isInterviewer(),
-				isInterviewee: isInterviewee(),
+				isInterviewer: isInterviewer,
+				isInterviewee: isInterviewee,
 				urlParams: browser ? new URLSearchParams(window.location.search).get('role') : null
 			});
 
 			fetchInterviewProblems();
-			if (isInterviewer()) {
+			if (isInterviewer) {
 				fetchAvailableProblems();
 			}
 
 			// Setup tab switching detection for interviewees
-			if (isInterviewee()) {
+			if (isInterviewee) {
 				console.log('Setting up tab switching detection for interviewee');
 				initializeSSEForTabDetection();
 				setupTabDetection();
@@ -479,7 +457,7 @@
 		cleanupTabDetection();
 
 		// Disconnect SSE if we connected it for tab detection
-		if (sseConnected && isInterviewee()) {
+		if (sseConnected && isInterviewee) {
 			// Note: We don't disconnect SSE here because the chat component might be using it
 			// The chat component will handle SSE disconnection
 		}
@@ -501,7 +479,7 @@
 								<div class="flex items-center gap-2">
 									<CodeIcon size={16} />
 									<h3 class="text-sm font-medium">Code Editor</h3>
-									{#if isInterviewee() && tabSwitchCount > 0}
+									{#if isInterviewee && tabSwitchCount > 0}
 										<Badge
 											variant="outline"
 											class="bg-orange-50 text-xs text-orange-600 dark:bg-orange-950 dark:text-orange-400"
@@ -511,7 +489,7 @@
 										</Badge>
 									{/if}
 								</div>
-								{#if isInterviewee()}
+								{#if isInterviewee}
 									<div class="flex items-center gap-2">
 										<Button
 											size="sm"
@@ -527,7 +505,7 @@
 								{/if}
 							</div>
 							<div class="flex-1 p-4">
-								<TiptapEditor roomId={$page.params.roomId} onContentChange={handleCodeChange} />
+								<TiptapEditor {roomId} onContentChange={handleCodeChange} />
 							</div>
 						</div>
 					</Pane>
@@ -548,7 +526,7 @@
 									<FlaskConicalIcon size={16} />
 									<h3 class="text-sm font-medium">Problems & Test Cases</h3>
 								</div>
-								{#if isInterviewer()}
+								{#if isInterviewer}
 									<div class="flex items-center gap-1">
 										<Button
 											size="sm"
@@ -567,7 +545,7 @@
 									<div class="py-8 text-center text-sm text-muted-foreground">
 										<FlaskConicalIcon size={32} class="mx-auto mb-2 opacity-50" />
 										<p>No problems added yet.</p>
-										{#if isInterviewer()}
+										{#if isInterviewer}
 											<Button
 												size="sm"
 												variant="outline"
@@ -589,7 +567,7 @@
 															{problem.description}
 														</p>
 													</div>
-													{#if isInterviewer()}
+													{#if isInterviewer}
 														<Button
 															size="sm"
 															variant="ghost"
@@ -692,176 +670,27 @@
 	</div>
 </main>
 
-<!-- Problem Selection Sheet -->
-<Sheet.Root bind:open={showProblemDialog}>
-	<Sheet.Content side="right" class="w-full overflow-y-auto p-6 sm:max-w-2xl">
-		<Sheet.Header>
-			<Sheet.Title>Add Problem to Interview</Sheet.Title>
-			<Sheet.Description>Choose from predefined problems or create a custom one.</Sheet.Description>
-		</Sheet.Header>
+<!-- Problem Management Components -->
+<AddProblemDialog
+	bind:open={showProblemDialog}
+	{availableProblems}
+	isLoading={isLoadingProblems}
+	{roomId}
+	on:close={() => (showProblemDialog = false)}
+	on:addProblemFromSet={handleAddProblemFromSet}
+	on:addCustomProblem={handleAddCustomProblem}
+/>
 
-		<div class="space-y-6 py-6">
-			<!-- Custom Problem Form -->
-			<div class="space-y-4">
-				<div>
-					<Label for="problem-title">Problem Title</Label>
-					<Input
-						id="problem-title"
-						bind:value={customProblemTitle}
-						placeholder="Enter problem title..."
-						class="mt-1"
-					/>
-				</div>
-				<div>
-					<Label for="problem-description">Problem Description</Label>
-					<Textarea
-						id="problem-description"
-						bind:value={customProblemDescription}
-						placeholder="Enter problem description..."
-						rows={6}
-						class="mt-1"
-					/>
-				</div>
-			</div>
-
-			<!-- Predefined Problems List -->
-			<div class="space-y-4">
-				<h3 class="text-sm font-medium text-muted-foreground">
-					Or choose from predefined problems:
-				</h3>
-				<div class="max-h-64 space-y-2 overflow-y-auto rounded-lg border">
-					{#each availableProblems as problem}
-						<button
-							class="w-full border-b p-3 text-left transition-colors last:border-b-0 hover:bg-muted"
-							onclick={() => (selectedProblem = problem)}
-						>
-							<div class="flex items-center justify-between">
-								<div class="flex-1">
-									<h4 class="text-sm font-medium">{problem.title}</h4>
-									<p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
-										{problem.description}
-									</p>
-								</div>
-								<div class="ml-2 flex items-center gap-2">
-									<Badge variant="outline" class="text-xs">
-										{problem.difficulty}
-									</Badge>
-									<Badge variant="secondary" class="text-xs">
-										{problem.testCases.length} tests
-									</Badge>
-								</div>
-							</div>
-						</button>
-					{/each}
-				</div>
-			</div>
-
-			{#if selectedProblem}
-				<!-- Selected Problem Preview -->
-				<div class="rounded-lg border bg-muted/50 p-4">
-					<div class="mb-2 flex items-center justify-between">
-						<h4 class="font-semibold">{selectedProblem.title}</h4>
-						<div class="flex items-center gap-2">
-							<Badge variant="outline">{selectedProblem.difficulty}</Badge>
-							<Badge variant="secondary">{selectedProblem.testCases.length} test cases</Badge>
-						</div>
-					</div>
-					<p class="mb-3 text-sm text-muted-foreground">{selectedProblem.description}</p>
-					<div class="text-xs text-muted-foreground">
-						<strong>Tags:</strong>
-						{selectedProblem.tags.join(', ')}
-					</div>
-				</div>
-			{/if}
-		</div>
-
-		<div class="flex gap-2 pt-6">
-			<Button
-				variant="outline"
-				onclick={() => {
-					showProblemDialog = false;
-					selectedProblem = null;
-					customProblemTitle = '';
-					customProblemDescription = '';
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				onclick={selectedProblem ? addProblemFromSet : addCustomProblem}
-				disabled={isLoadingProblems ||
-					(!selectedProblem && (!customProblemTitle.trim() || !customProblemDescription.trim()))}
-			>
-				{#if isLoadingProblems}
-					<div
-						class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
-					></div>
-				{/if}
-				Add Problem
-			</Button>
-		</div>
-	</Sheet.Content>
-</Sheet.Root>
-
-<!-- Add Test Case Sheet -->
-<Sheet.Root bind:open={showAddTestCaseDialog}>
-	<Sheet.Content side="right" class="w-full p-6 sm:max-w-lg">
-		<Sheet.Header>
-			<Sheet.Title>Add Test Case</Sheet.Title>
-			<Sheet.Description>
-				Add a new test case to "{selectedInterviewProblem?.title}".
-			</Sheet.Description>
-		</Sheet.Header>
-
-		<div class="space-y-4 py-6">
-			<div>
-				<Label for="test-input">Input</Label>
-				<Textarea
-					id="test-input"
-					bind:value={newTestCaseInput}
-					placeholder="Enter test input..."
-					rows={3}
-					class="mt-1"
-				/>
-			</div>
-			<div>
-				<Label for="test-output">Expected Output</Label>
-				<Textarea
-					id="test-output"
-					bind:value={newTestCaseOutput}
-					placeholder="Enter expected output..."
-					rows={3}
-					class="mt-1"
-				/>
-			</div>
-		</div>
-
-		<div class="flex gap-2 pt-6">
-			<Button
-				variant="outline"
-				onclick={() => {
-					showAddTestCaseDialog = false;
-					selectedInterviewProblem = null;
-					newTestCaseInput = '';
-					newTestCaseOutput = '';
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				onclick={addTestCase}
-				disabled={isLoadingProblems || !newTestCaseInput.trim() || !newTestCaseOutput.trim()}
-			>
-				{#if isLoadingProblems}
-					<div
-						class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
-					></div>
-				{/if}
-				Add Test Case
-			</Button>
-		</div>
-	</Sheet.Content>
-</Sheet.Root>
+<AddTestCaseDialog
+	bind:open={showAddTestCaseDialog}
+	selectedProblem={selectedInterviewProblem}
+	isLoading={isLoadingProblems}
+	on:close={() => {
+		showAddTestCaseDialog = false;
+		selectedInterviewProblem = null;
+	}}
+	on:addTestCase={handleAddTestCase}
+/>
 
 <!-- Code Submission Sheet -->
 <Sheet.Root bind:open={showSubmissionDialog}>
