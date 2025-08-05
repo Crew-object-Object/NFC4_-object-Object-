@@ -194,7 +194,9 @@
 				</div>
 
 				<div class="flex items-center gap-3">
-					<div class="rounded-lg bg-gradient-to-r from-primary/10 to-primary/5 px-4 py-2 border border-primary/20">
+					<div
+						class="rounded-lg border border-primary/20 bg-gradient-to-r from-primary/10 to-primary/5 px-4 py-2"
+					>
 						<div class="flex items-center gap-2">
 							<Calendar class="h-4 w-4 text-primary" />
 							<div class="text-right">
@@ -208,11 +210,11 @@
 
 			<Card class="border-border/50 bg-card/50 p-4 shadow-lg backdrop-blur-sm">
 				<div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-					<div class="relative flex-1 max-w-md">
+					<div class="relative max-w-md flex-1">
 						<Input
 							type="text"
 							placeholder="Search interviews..."
-							class="h-10 border-border/50 bg-background/50 text-sm transition-colors focus:bg-background focus:border-primary/50"
+							class="h-10 border-border/50 bg-background/50 text-sm transition-colors focus:border-primary/50 focus:bg-background"
 							bind:value={searchQuery}
 						/>
 					</div>
@@ -223,7 +225,9 @@
 							value={filterBy}
 							onValueChange={(value) => value && (filterBy = value)}
 						>
-							<Select.Trigger class="h-10 w-36 border-border/50 bg-background/50 text-sm transition-colors hover:bg-background focus:border-primary/50">
+							<Select.Trigger
+								class="h-10 w-36 border-border/50 bg-background/50 text-sm transition-colors hover:bg-background focus:border-primary/50"
+							>
 								<Filter class="mr-2 h-4 w-4 text-primary" />
 								<span class="font-medium">
 									{filterBy === 'all'
@@ -245,10 +249,18 @@
 							value={sortBy}
 							onValueChange={(value) => value && (sortBy = value)}
 						>
-							<Select.Trigger class="h-10 w-32 border-border/50 bg-background/50 text-sm transition-colors hover:bg-background focus:border-primary/50">
+							<Select.Trigger
+								class="h-10 w-32 border-border/50 bg-background/50 text-sm transition-colors hover:bg-background focus:border-primary/50"
+							>
 								<ArrowUpDown class="mr-2 h-4 w-4 text-primary" />
 								<span class="font-medium">
-									{sortBy === 'recent' ? 'Recent' : sortBy === 'oldest' ? 'Oldest' : sortBy === 'score' ? 'Score' : 'Title'}
+									{sortBy === 'recent'
+										? 'Recent'
+										: sortBy === 'oldest'
+											? 'Oldest'
+											: sortBy === 'score'
+												? 'Score'
+												: 'Title'}
 								</span>
 							</Select.Trigger>
 							<Select.Content class="w-32">
@@ -267,51 +279,55 @@
 			<div class="space-y-3">
 				{#each Array(3) as _}
 					<Card class="border-border/60 bg-gradient-to-r from-card via-card/50 to-card/95">
-						<CardContent class="px-8 py-5">
+						<CardContent class="px-8">
 							<div class="flex items-center justify-between">
-								<div class="flex items-center space-x-4 flex-1 min-w-0">
+								<div class="flex min-w-0 flex-1 items-center space-x-4">
 									<div class="flex items-center space-x-4">
-										<div class="rounded-full bg-gradient-to-br from-primary/20 to-primary/10 p-2.5 animate-pulse shadow-sm">
-											<div class="h-5 w-5 bg-muted/60 rounded"></div>
+										<div
+											class="animate-pulse rounded-full bg-gradient-to-br from-primary/20 to-primary/10 p-2.5 shadow-sm"
+										>
+											<div class="h-5 w-5 rounded bg-muted/60"></div>
 										</div>
 										<div class="min-w-0 flex-1">
-											<div class="flex items-center gap-3 mb-1">
-												<div class="h-5 bg-muted rounded animate-pulse w-48"></div>
-												<div class="h-6 w-20 bg-muted/50 rounded animate-pulse"></div>
+											<div class="mb-1 flex items-center gap-3">
+												<div class="h-5 w-48 animate-pulse rounded bg-muted"></div>
+												<div class="h-6 w-20 animate-pulse rounded bg-muted/50"></div>
 											</div>
-											<div class="h-3 bg-muted/50 rounded animate-pulse w-32"></div>
+											<div class="h-3 w-32 animate-pulse rounded bg-muted/50"></div>
 										</div>
 									</div>
 								</div>
-								<div class="hidden lg:flex items-center space-x-8 px-6">
+								<div class="hidden items-center space-x-8 px-6 lg:flex">
 									<div class="flex items-center space-x-2">
-										<div class="rounded-full bg-primary/10 p-1.5 animate-pulse">
-											<div class="h-3.5 w-3.5 bg-muted/60 rounded"></div>
+										<div class="animate-pulse rounded-full bg-primary/10 p-1.5">
+											<div class="h-3.5 w-3.5 rounded bg-muted/60"></div>
 										</div>
-										<div class="h-3 bg-muted rounded animate-pulse w-20"></div>
+										<div class="h-3 w-20 animate-pulse rounded bg-muted"></div>
 									</div>
 									<div class="flex items-center space-x-2">
-										<div class="rounded-full bg-primary/10 p-1.5 animate-pulse">
-											<div class="h-3.5 w-3.5 bg-muted/60 rounded"></div>
+										<div class="animate-pulse rounded-full bg-primary/10 p-1.5">
+											<div class="h-3.5 w-3.5 rounded bg-muted/60"></div>
 										</div>
-										<div class="h-3 bg-muted rounded animate-pulse w-16"></div>
+										<div class="h-3 w-16 animate-pulse rounded bg-muted"></div>
 									</div>
 									<div class="flex items-center space-x-2">
-										<div class="rounded-full bg-primary/10 p-1.5 animate-pulse">
-											<div class="h-3.5 w-3.5 bg-muted/60 rounded"></div>
+										<div class="animate-pulse rounded-full bg-primary/10 p-1.5">
+											<div class="h-3.5 w-3.5 rounded bg-muted/60"></div>
 										</div>
-										<div class="h-3 bg-muted rounded animate-pulse w-24"></div>
+										<div class="h-3 w-24 animate-pulse rounded bg-muted"></div>
 									</div>
 								</div>
 								<div class="flex items-center space-x-4">
-									<div class="hidden lg:flex items-center space-x-3">
-										<div class="h-10 w-10 bg-muted rounded-full animate-pulse border-2 border-primary/20 shadow-md"></div>
+									<div class="hidden items-center space-x-3 lg:flex">
+										<div
+											class="h-10 w-10 animate-pulse rounded-full border-2 border-primary/20 bg-muted shadow-md"
+										></div>
 										<div class="min-w-0">
-											<div class="h-3 bg-muted rounded animate-pulse w-20 mb-1"></div>
-											<div class="h-2 bg-muted/50 rounded animate-pulse w-16"></div>
+											<div class="mb-1 h-3 w-20 animate-pulse rounded bg-muted"></div>
+											<div class="h-2 w-16 animate-pulse rounded bg-muted/50"></div>
 										</div>
 									</div>
-									<div class="h-8 w-16 bg-muted rounded animate-pulse shadow-md"></div>
+									<div class="h-8 w-16 animate-pulse rounded bg-muted shadow-md"></div>
 								</div>
 							</div>
 						</CardContent>
@@ -322,7 +338,9 @@
 			<Card class="border-destructive/50 bg-destructive/5 shadow-sm">
 				<CardContent class="pt-6 pb-6">
 					<div class="flex items-center space-x-3 text-destructive">
-						<div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-destructive">
+						<div
+							class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-destructive"
+						>
 							<span class="text-xs font-bold">!</span>
 						</div>
 						<div>
@@ -336,7 +354,9 @@
 			<Card class="border-2 border-dashed shadow-sm">
 				<CardContent class="pt-8 pb-8">
 					<div class="space-y-4 text-center">
-						<div class="mx-auto w-fit rounded-full bg-gradient-to-br from-primary/20 to-primary/10 p-4">
+						<div
+							class="mx-auto w-fit rounded-full bg-gradient-to-br from-primary/20 to-primary/10 p-4"
+						>
 							<Calendar class="h-8 w-8 text-primary" />
 						</div>
 						<div>
@@ -353,35 +373,43 @@
 		{:else}
 			<div class="space-y-3">
 				{#each filteredInterviews as interview (interview.id)}
-					<Card class="group border-border/60 bg-gradient-to-r from-card via-card/50 to-card/95 transition-all duration-300 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 backdrop-blur-sm">
-						<CardContent class="px-8 py-5">
+					<Card
+						class="group border-border/60 bg-gradient-to-r from-card via-card/50 to-card/95 backdrop-blur-sm transition-all duration-300 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5"
+					>
+						<CardContent class="px-8">
 							<div class="flex items-center justify-between">
 								<!-- Left: Interview Info -->
-								<div class="flex items-center space-x-4 flex-1 min-w-0">
+								<div class="flex min-w-0 flex-1 items-center space-x-4">
 									<div class="flex items-center space-x-4">
 										{#if isInterviewer(interview)}
-											<div class="rounded-full bg-gradient-to-br from-primary/20 to-primary/10 p-2.5 shadow-sm">
+											<div
+												class="rounded-full bg-gradient-to-br from-primary/20 to-primary/10 p-2.5 shadow-sm"
+											>
 												<UserCog class="h-5 w-5 text-primary" />
 											</div>
 										{:else}
-											<div class="rounded-full bg-gradient-to-br from-primary/20 to-primary/10 p-2.5 shadow-sm">
+											<div
+												class="rounded-full bg-gradient-to-br from-primary/20 to-primary/10 p-2.5 shadow-sm"
+											>
 												<UserCheck class="h-5 w-5 text-primary" />
 											</div>
 										{/if}
-										
+
 										<div class="min-w-0 flex-1">
-											<div class="flex items-center gap-3 mb-1">
-												<h3 class="font-bold text-lg leading-tight group-hover:text-primary transition-colors truncate">
+											<div class="mb-1 flex items-center gap-3">
+												<h3
+													class="truncate text-lg leading-tight font-bold transition-colors group-hover:text-primary"
+												>
 													{interview.interviewTitle}
 												</h3>
-												<Badge 
-													variant={isInterviewer(interview) ? 'default' : 'secondary'} 
-													class="px-3 py-1 text-xs font-semibold shrink-0 shadow-sm"
+												<Badge
+													variant={isInterviewer(interview) ? 'default' : 'secondary'}
+													class="shrink-0 px-3 py-1 text-xs font-semibold shadow-sm"
 												>
 													{isInterviewer(interview) ? 'Conducted' : 'Attended'}
 												</Badge>
 											</div>
-											<p class="text-sm text-muted-foreground truncate max-w-md">
+											<p class="max-w-md truncate text-sm text-muted-foreground">
 												{interview.interviewDescription}
 											</p>
 										</div>
@@ -389,46 +417,61 @@
 								</div>
 
 								<!-- Center: Interview Details -->
-								<div class="hidden lg:flex items-center space-x-8 px-6">
+								<div class="hidden items-center space-x-8 px-6 lg:flex">
 									<div class="flex items-center space-x-2 text-sm">
 										<div class="rounded-full bg-primary/10 p-1.5">
 											<Calendar class="h-3.5 w-3.5 text-primary" />
 										</div>
-										<span class="font-semibold text-foreground">{formatDate(interview.startTime)}</span>
+										<span class="font-semibold text-foreground"
+											>{formatDate(interview.startTime)}</span
+										>
 									</div>
 									<div class="flex items-center space-x-2 text-sm">
 										<div class="rounded-full bg-primary/10 p-1.5">
 											<Clock class="h-3.5 w-3.5 text-primary" />
 										</div>
-										<span class="font-semibold text-foreground">{formatDuration(interview.startTime, interview.endTime)}</span>
+										<span class="font-semibold text-foreground"
+											>{formatDuration(interview.startTime, interview.endTime)}</span
+										>
 									</div>
 									{#if interview.problems.length > 0}
 										<div class="flex items-center space-x-2 text-sm">
 											<div class="rounded-full bg-primary/10 p-1.5">
 												<Target class="h-3.5 w-3.5 text-primary" />
 											</div>
-											<span class="font-semibold text-foreground">{interview.problems.length} problems</span>
+											<span class="font-semibold text-foreground"
+												>{interview.problems.length} problems</span
+											>
 										</div>
 									{/if}
 								</div>
 
 								<!-- Right: Participant & Score -->
 								<div class="flex items-center space-x-4">
-									<div class="hidden lg:flex items-center space-x-3">
+									<div class="hidden items-center space-x-3 lg:flex">
 										<Avatar class="h-10 w-10 border-2 border-primary/20 shadow-md">
-											<AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getOtherParticipant(interview).name}`} alt={getOtherParticipant(interview).name} />
-											<AvatarFallback class="bg-gradient-to-br from-primary/15 to-primary/5 text-sm font-bold text-primary">
+											<AvatarImage
+												src={`https://api.dicebear.com/7.x/initials/svg?seed=${getOtherParticipant(interview).name}`}
+												alt={getOtherParticipant(interview).name}
+											/>
+											<AvatarFallback
+												class="bg-gradient-to-br from-primary/15 to-primary/5 text-sm font-bold text-primary"
+											>
 												{getInitials(getOtherParticipant(interview).name)}
 											</AvatarFallback>
 										</Avatar>
 										<div class="min-w-0">
-											<p class="text-sm font-semibold truncate max-w-32 text-foreground">{getOtherParticipant(interview).name}</p>
-											<p class="text-xs text-muted-foreground truncate max-w-32">{getOtherParticipant(interview).email}</p>
+											<p class="max-w-32 truncate text-sm font-semibold text-foreground">
+												{getOtherParticipant(interview).name}
+											</p>
+											<p class="max-w-32 truncate text-xs text-muted-foreground">
+												{getOtherParticipant(interview).email}
+											</p>
 										</div>
 									</div>
-									
+
 									<div class="flex items-center">
-										<Badge 
+										<Badge
 											variant={getScoreVariant(interview.interviewScore)}
 											class={`px-4 py-2 text-base font-bold shadow-md ${getScoreColor(interview.interviewScore)}`}
 										>
@@ -437,9 +480,9 @@
 									</div>
 								</div>
 							</div>
-							
+
 							<!-- Mobile Details -->
-							<div class="lg:hidden mt-4 pt-4 border-t border-border/50">
+							<div class="mt-4 border-t border-border/50 pt-4 lg:hidden">
 								<div class="flex items-center justify-between text-xs">
 									<div class="flex items-center space-x-4 text-muted-foreground">
 										<div class="flex items-center space-x-1.5">
@@ -448,7 +491,9 @@
 										</div>
 										<div class="flex items-center space-x-1.5">
 											<Clock class="h-3 w-3" />
-											<span class="font-medium">{formatDuration(interview.startTime, interview.endTime)}</span>
+											<span class="font-medium"
+												>{formatDuration(interview.startTime, interview.endTime)}</span
+											>
 										</div>
 										{#if interview.problems.length > 0}
 											<div class="flex items-center space-x-1.5">
@@ -459,12 +504,19 @@
 									</div>
 									<div class="flex items-center space-x-2">
 										<Avatar class="h-6 w-6 border border-primary/20">
-											<AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getOtherParticipant(interview).name}`} alt={getOtherParticipant(interview).name} />
-											<AvatarFallback class="bg-gradient-to-br from-primary/10 to-primary/5 text-xs font-semibold text-primary">
+											<AvatarImage
+												src={`https://api.dicebear.com/7.x/initials/svg?seed=${getOtherParticipant(interview).name}`}
+												alt={getOtherParticipant(interview).name}
+											/>
+											<AvatarFallback
+												class="bg-gradient-to-br from-primary/10 to-primary/5 text-xs font-semibold text-primary"
+											>
 												{getInitials(getOtherParticipant(interview).name)}
 											</AvatarFallback>
 										</Avatar>
-										<span class="font-semibold text-foreground text-sm">{getOtherParticipant(interview).name}</span>
+										<span class="text-sm font-semibold text-foreground"
+											>{getOtherParticipant(interview).name}</span
+										>
 									</div>
 								</div>
 							</div>
