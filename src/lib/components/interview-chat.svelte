@@ -1,10 +1,15 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { sseClient, type ChatMessage } from '$lib/sse-client';
+	import { useSession } from '$lib/auth-client';
 	import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
 	import SendIcon from '@lucide/svelte/icons/send';
+	import * as Avatar from '$lib/components/ui/avatar';
 
 	export let roomId: string;
+
+	const session = useSession();
+	$: currentUser = $session.data?.user;
 
 	interface Message {
 		messageId: string;
@@ -33,7 +38,7 @@
 			await sseClient.connect(roomId);
 			sseConnected = true;
 			connectionError = '';
-			
+
 			// Load initial messages
 			await fetchMessages();
 		} catch (error) {
@@ -153,13 +158,13 @@
 		if (roomId) {
 			// Initialize SSE connection
 			initializeSSE();
-			
+
 			// Set up event handlers
 			const unsubscribeMessage = sseClient.onMessage(handleNewMessage);
 			const unsubscribeError = sseClient.onError(handleSSEError);
 			const unsubscribeConnect = sseClient.onConnect(handleSSEConnect);
 			const unsubscribeDisconnect = sseClient.onDisconnect(handleSSEDisconnect);
-			
+
 			// Cleanup function
 			return () => {
 				unsubscribeMessage();
@@ -181,7 +186,7 @@
 		<MessageCircleIcon size={16} />
 		<h3 class="text-sm font-medium">Chat</h3>
 		<span class="text-xs text-muted-foreground">({messages.length})</span>
-		
+
 		<!-- Connection Status -->
 		<div class="ml-auto flex items-center gap-2">
 			{#if sseConnected}
@@ -206,24 +211,49 @@
 				<p>No messages yet. Start the conversation!</p>
 			</div>
 		{:else}
-			<div class="space-y-3">
+			<div class="space-y-4">
 				{#each messages as message (message.messageId)}
-					<div class="flex items-start space-x-2">
+					{@const isCurrentUser = currentUser?.id === message.from.id}
+					<div class="flex {isCurrentUser ? 'justify-end' : 'justify-start'}">
 						<div
-							class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
+							class="flex items-start space-x-2 max-w-[70%] {isCurrentUser
+								? 'flex-row-reverse space-x-reverse'
+								: ''}"
 						>
-							{getInitials(message.from.name)}
-						</div>
-						<div class="min-w-0 flex-1">
-							<div class="rounded-lg bg-muted p-3">
-								<p class="text-sm break-words">{message.content}</p>
+							<!-- User Avatar -->
+							<div class="flex-shrink-0">
+								<Avatar.Root class="h-8 w-8 ring-2 ring-white dark:ring-gray-800">
+									<Avatar.Image 
+										src={message.from.image} 
+										alt={message.from.name}
+										class="object-cover"
+									/>
+									<Avatar.Fallback class="bg-primary text-primary-foreground text-xs font-semibold">
+										{getInitials(message.from.name)}
+									</Avatar.Fallback>
+								</Avatar.Root>
 							</div>
-							<div class="mt-1 flex items-center gap-2">
-								<p class="text-xs text-muted-foreground">{message.from.name}</p>
-								<span class="text-xs text-muted-foreground">•</span>
-								<p class="text-xs text-muted-foreground">
-									{formatTime(message.timestamp)}
-								</p>
+
+							<!-- Message Content -->
+							<div class="flex flex-col {isCurrentUser ? 'items-end' : 'items-start'}">
+								<div
+									class="rounded-2xl px-4 py-2 max-w-fit {isCurrentUser
+										? 'bg-primary text-primary-foreground'
+										: 'bg-muted text-muted-foreground'}"
+								>
+									<p class="text-sm break-words">{message.content}</p>
+								</div>
+								<div
+									class="mt-1 flex items-center gap-2 {isCurrentUser
+										? 'justify-end'
+										: 'justify-start'}"
+								>
+									<p class="text-xs text-muted-foreground">{message.from.name}</p>
+									<span class="text-xs text-muted-foreground">•</span>
+									<p class="text-xs text-muted-foreground">
+										{formatTime(message.timestamp)}
+									</p>
+								</div>
 							</div>
 						</div>
 					</div>
@@ -231,35 +261,37 @@
 			</div>
 		{/if}
 	</div>
-	<div class="border-t p-4">
+	<div class="border-t bg-background p-4">
 		<form
 			onsubmit={(e) => {
 				e.preventDefault();
 				sendMessage();
 			}}
-			class="flex space-x-2"
+			class="flex items-end space-x-3"
 		>
-			<input
-				type="text"
-				placeholder={sseConnected ? "Type a message..." : "Connecting..."}
-				class="flex-1 rounded-md border border-input px-3 py-2 text-sm focus:ring-2 focus:ring-ring focus:outline-none disabled:opacity-50"
-				bind:value={newMessage}
-				onkeypress={handleKeyPress}
-				disabled={isLoading || !sseConnected}
-			/>
+			<div class="flex-1">
+				<input
+					type="text"
+					placeholder={sseConnected ? 'Type a message...' : 'Connecting...'}
+					class="w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:outline-none disabled:opacity-50"
+					bind:value={newMessage}
+					onkeypress={handleKeyPress}
+					disabled={isLoading || !sseConnected}
+				/>
+			</div>
 			<button
 				type="submit"
-				class="flex items-center gap-1 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+				class="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 				disabled={isLoading || !newMessage.trim() || !sseConnected}
+				title="Send message"
 			>
 				{#if isLoading}
 					<div
 						class="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
 					></div>
 				{:else}
-					<SendIcon size={14} />
+					<SendIcon size={16} />
 				{/if}
-				Send
 			</button>
 		</form>
 	</div>
