@@ -21,11 +21,14 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import { Clock, PhoneOff, Timer } from 'lucide-svelte';
 	import type { Problem } from '$lib/problemset';
 	import { browser } from '$app/environment';
 	import { authClient, useSession } from '$lib/auth-client';
 	import { sseClient, type ProblemAddedMessage, type TestCaseAddedMessage } from '$lib/sse-client';
 	import { onMount, onDestroy } from 'svelte';
+	import { goto } from '$app/navigation';
 
 	interface InterviewProblem {
 		id: string;
@@ -301,6 +304,157 @@
 	// Check if current user is interviewee
 	let isInterviewee = $state(false);
 
+	// Interview timer and end interview functionality
+	let interview = $state<any>(null);
+	let elapsedTime = $state(0);
+	let timerInterval: ReturnType<typeof setInterval> | null = null;
+	let showEndInterviewDialog = $state(false);
+	let isEndingInterview = $state(false);
+	let canJoinInterview = $state(false);
+	let timeUntilStart = $state(0);
+	let isLoadingInterview = $state(true);
+
+	// Format elapsed time as HH:MM:SS
+	const formatElapsedTime = (seconds: number) => {
+		const hours = Math.floor(seconds / 3600);
+		const mins = Math.floor((seconds % 3600) / 60);
+		const secs = seconds % 60;
+		
+		if (hours > 0) {
+			return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+		}
+		return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+	};
+
+	// Format time until start as readable string
+	const formatTimeUntilStart = (seconds: number) => {
+		if (seconds <= 0) return '';
+		
+		const hours = Math.floor(seconds / 3600);
+		const mins = Math.floor((seconds % 3600) / 60);
+		
+		if (hours > 0) {
+			return `${hours}h ${mins}m`;
+		} else if (mins > 0) {
+			return `${mins}m`;
+		} else {
+			return `${seconds}s`;
+		}
+	};
+
+	// Fetch interview details
+	const fetchInterviewDetails = async () => {
+		if (!roomId) return;
+
+		isLoadingInterview = true;
+		try {
+			const response = await fetch(`/api/interviews/${roomId}/details`);
+			const result = await response.json();
+
+			if (result.success) {
+				interview = result.data;
+				checkInterviewTiming();
+			} else {
+				console.error('Failed to fetch interview details:', result.error);
+			}
+		} catch (error) {
+			console.error('Error fetching interview details:', error);
+		} finally {
+			isLoadingInterview = false;
+		}
+	};
+
+	// Check if interview can be joined and calculate times
+	const checkInterviewTiming = () => {
+		if (!interview) return;
+
+		const now = new Date();
+		const startTime = new Date(interview.startTime);
+		const endTime = new Date(interview.endTime);
+
+		// Check if current time is within interview window
+		if (now >= startTime && now <= endTime) {
+			canJoinInterview = true;
+			timeUntilStart = 0;
+			
+			// Calculate elapsed time since start
+			const elapsedMs = now.getTime() - startTime.getTime();
+			elapsedTime = Math.floor(elapsedMs / 1000);
+		} else if (now < startTime) {
+			canJoinInterview = false;
+			
+			// Calculate time until start
+			const timeUntilMs = startTime.getTime() - now.getTime();
+			timeUntilStart = Math.floor(timeUntilMs / 1000);
+		} else {
+			// Interview has ended
+			canJoinInterview = false;
+			timeUntilStart = 0;
+			
+			// Calculate total duration
+			const totalMs = endTime.getTime() - startTime.getTime();
+			elapsedTime = Math.floor(totalMs / 1000);
+		}
+	};
+
+	// Start the interview timer
+	const startInterviewTimer = () => {
+		if (timerInterval) return;
+		
+		timerInterval = setInterval(() => {
+			checkInterviewTiming();
+		}, 1000);
+	};
+
+	// Stop the interview timer
+	const stopInterviewTimer = () => {
+		if (timerInterval) {
+			clearInterval(timerInterval);
+			timerInterval = null;
+		}
+	};
+
+	// End the interview
+	const endInterview = async () => {
+		if (!roomId || isEndingInterview) return;
+
+		isEndingInterview = true;
+		try {
+			const response = await fetch(`/api/interviews/${roomId}`, {
+				method: 'PATCH',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					status: 'COMPLETED'
+				})
+			});
+
+			const result = await response.json();
+
+			if (result.success) {
+				stopInterviewTimer();
+				showEndInterviewDialog = false;
+				
+				// Send notification through SSE
+				if (sseClient.isConnected) {
+					await sseClient.sendMessage('🎉 Interview has been ended by the interviewer');
+				}
+				
+				// Redirect to dashboard after a short delay
+				setTimeout(() => {
+					goto('/dashboard');
+				}, 2000);
+			} else {
+				console.error('Failed to end interview:', result.error);
+			}
+		} catch (error) {
+			console.error('Error ending interview:', error);
+		} finally {
+			isEndingInterview = false;
+		}
+	};
+
 	// Initialize SSE connection for real-time updates
 	const initializeSSE = async () => {
 		if (!roomId) return;
@@ -361,6 +515,12 @@
 		if (!$session.isPending) {
 			isInterviewer = $session.data?.user.role === 'Interviewer';
 			isInterviewee = !isInterviewer;
+			
+			// Fetch interview details and start timer when user role is determined
+			if (browser && !timerInterval) {
+				fetchInterviewDetails();
+				startInterviewTimer();
+			}
 		}
 	});
 
@@ -582,11 +742,13 @@
 				urlParams: browser ? new URLSearchParams(window.location.search).get('role') : null
 			});
 
-			fetchInterviewProblems();
-			if (isInterviewer) {
-				fetchAvailableProblems();
+			if (canJoinInterview) {
+				fetchInterviewProblems();
+				if (isInterviewer) {
+					fetchAvailableProblems();
+				}
+				initializeSSE();
 			}
-			initializeSSE();
 		}
 	});
 
@@ -611,6 +773,9 @@
 		// Cleanup tab detection
 		cleanupTabDetection();
 
+		// Stop interview timer
+		stopInterviewTimer();
+
 		// Disconnect SSE if connected
 		if (sseConnected) {
 			sseClient.disconnect();
@@ -619,7 +784,155 @@
 </script>
 
 <main class="h-px grow px-4 py-0">
-	<div class="h-full overflow-hidden rounded-lg border">
+	{#if isLoadingInterview || $session.isPending}
+		<!-- Loading state -->
+		<div class="h-full overflow-hidden rounded-lg border">
+			<div class="flex items-center justify-between border-b bg-background px-4 py-2">
+				<div class="flex items-center gap-4">
+					<Skeleton class="h-5 w-32" />
+					<Skeleton class="h-6 w-16" />
+				</div>
+				<Skeleton class="h-8 w-24" />
+			</div>
+			
+			<div class="flex h-full">
+				<!-- Editor Section Skeleton -->
+				<div class="flex-1 border-r">
+					<div class="flex h-full flex-col">
+						<!-- Code Editor Header -->
+						<div class="flex items-center justify-between border-b px-4 py-2">
+							<Skeleton class="h-4 w-24" />
+							<Skeleton class="h-6 w-20" />
+						</div>
+						<!-- Editor Content -->
+						<div class="flex-1 p-4 space-y-2">
+							<Skeleton class="h-4 w-full" />
+							<Skeleton class="h-4 w-3/4" />
+							<Skeleton class="h-4 w-1/2" />
+							<Skeleton class="h-4 w-5/6" />
+						</div>
+						
+						<!-- Test Cases Section -->
+						<div class="border-t">
+							<div class="flex items-center justify-between border-b px-4 py-2">
+								<Skeleton class="h-4 w-32" />
+								<Skeleton class="h-6 w-20" />
+							</div>
+							<div class="p-4 space-y-3">
+								<Skeleton class="h-16 w-full" />
+								<Skeleton class="h-16 w-full" />
+							</div>
+						</div>
+					</div>
+				</div>
+				
+				<!-- Right Panel Skeleton -->
+				<div class="w-96">
+					<div class="flex h-full flex-col">
+						<!-- Video Section -->
+						<div class="flex-1 border-b p-4">
+							<Skeleton class="h-full w-full rounded-lg" />
+						</div>
+						
+						<!-- Chat Section -->
+						<div class="flex-1 p-4 space-y-2">
+							<Skeleton class="h-4 w-16" />
+							<Skeleton class="h-8 w-full" />
+							<Skeleton class="h-8 w-3/4" />
+							<Skeleton class="h-8 w-1/2" />
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	{:else if !canJoinInterview && timeUntilStart > 0}
+		<!-- Interview hasn't started yet -->
+		<div class="flex h-full items-center justify-center">
+			<div class="text-center space-y-4 p-8 rounded-lg border bg-card">
+				<div class="flex items-center justify-center gap-2 text-muted-foreground">
+					<Timer size={24} />
+					<h2 class="text-xl font-semibold">Interview Not Started</h2>
+				</div>
+				<p class="text-muted-foreground">
+					The interview is scheduled to start in:
+				</p>
+				<div class="text-3xl font-mono font-bold text-primary">
+					{formatTimeUntilStart(timeUntilStart)}
+				</div>
+				{#if interview}
+					<div class="text-sm text-muted-foreground space-y-1">
+						<p><strong>Title:</strong> {interview.interviewTitle}</p>
+						<p><strong>Start Time:</strong> {new Date(interview.startTime).toLocaleString()}</p>
+						<p><strong>End Time:</strong> {new Date(interview.endTime).toLocaleString()}</p>
+					</div>
+				{/if}
+				<p class="text-xs text-muted-foreground">
+					Please wait until the scheduled time to join the interview.
+				</p>
+			</div>
+		</div>
+	{:else if !canJoinInterview && timeUntilStart === 0}
+		<!-- Interview has ended -->
+		<div class="flex h-full items-center justify-center">
+			<div class="text-center space-y-4 p-8 rounded-lg border bg-card">
+				<div class="flex items-center justify-center gap-2 text-muted-foreground">
+					<Clock size={24} />
+					<h2 class="text-xl font-semibold">Interview Ended</h2>
+				</div>
+				<p class="text-muted-foreground">
+					This interview has already ended.
+				</p>
+				{#if interview}
+					<div class="text-sm text-muted-foreground space-y-1">
+						<p><strong>Title:</strong> {interview.interviewTitle}</p>
+						<p><strong>Duration:</strong> {formatElapsedTime(elapsedTime)}</p>
+						<p><strong>Status:</strong> {interview.status}</p>
+					</div>
+				{/if}
+				<Button href="/dashboard" variant="outline">
+					Back to Dashboard
+				</Button>
+			</div>
+		</div>
+	{:else}
+		<!-- Interview is active -->
+		<div class="h-full overflow-hidden rounded-lg border">
+			<!-- Interview Header with Timer and End Button -->
+			{#if isInterviewer}
+				<div class="flex items-center justify-between border-b bg-background px-4 py-2">
+					<div class="flex items-center gap-4">
+						<div class="flex items-center gap-2">
+							<Timer size={16} class="text-primary" />
+							<span class="text-sm font-medium">Interview Time:</span>
+							<Badge variant="outline" class="font-mono text-sm">
+								{formatElapsedTime(elapsedTime)}
+							</Badge>
+						</div>
+						<div class="flex items-center gap-1">
+							{#if sseConnected}
+								<div class="h-2 w-2 rounded-full bg-green-500"></div>
+								<span class="text-xs text-green-600">Live</span>
+							{:else}
+								<div class="h-2 w-2 rounded-full bg-red-500"></div>
+								<span class="text-xs text-red-600">
+									{connectionError || 'Offline'}
+								</span>
+							{/if}
+						</div>
+					</div>
+					<Button 
+						variant="destructive" 
+						size="sm"
+						class="gap-2"
+						onclick={() => showEndInterviewDialog = true}
+						disabled={isEndingInterview}
+					>
+						<PhoneOff size={14} />
+						{isEndingInterview ? 'Ending...' : 'End Interview'}
+					</Button>
+				</div>
+			{/if}
+
 		<PaneGroup direction="horizontal">
 			<!-- Editor Section -->
 			<Pane defaultSize={60} minSize={40}>
@@ -709,21 +1022,23 @@
 										</Button>
 									{/if}
 									<!-- Connection Status -->
-									<div class="flex items-center gap-1">
-										{#if sseConnected}
-											<div class="flex items-center gap-1">
-												<div class="h-2 w-2 rounded-full bg-green-500"></div>
-												<span class="text-xs text-green-600">Live</span>
-											</div>
-										{:else}
-											<div class="flex items-center gap-1">
-												<div class="h-2 w-2 rounded-full bg-red-500"></div>
-												<span class="text-xs text-red-600">
-													{connectionError || 'Offline'}
-												</span>
-											</div>
-										{/if}
-									</div>
+									{#if !isInterviewer}
+										<div class="flex items-center gap-1">
+											{#if sseConnected}
+												<div class="flex items-center gap-1">
+													<div class="h-2 w-2 rounded-full bg-green-500"></div>
+													<span class="text-xs text-green-600">Live</span>
+												</div>
+											{:else}
+												<div class="flex items-center gap-1">
+													<div class="h-2 w-2 rounded-full bg-red-500"></div>
+													<span class="text-xs text-red-600">
+														{connectionError || 'Offline'}
+													</span>
+												</div>
+											{/if}
+										</div>
+									{/if}
 								</div>
 							</div>
 							<div class="flex-1 overflow-y-auto p-2">
@@ -853,7 +1168,8 @@
 				</PaneGroup>
 			</Pane>
 		</PaneGroup>
-	</div>
+		</div>
+	{/if}
 </main>
 
 <!-- Problem Management Components -->
@@ -1202,3 +1518,41 @@
 		</div>
 	</Sheet.Content>
 </Sheet.Root>
+
+<!-- End Interview Confirmation Dialog -->
+<AlertDialog.Root bind:open={showEndInterviewDialog}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>End Interview</AlertDialog.Title>
+			<AlertDialog.Description>
+				Are you sure you want to end this interview? This action cannot be undone and will mark the interview as completed.
+				
+				<div class="mt-4 rounded-lg bg-muted p-3">
+					<div class="flex items-center gap-2 text-sm">
+						<Clock size={16} />
+						<span class="font-medium">Interview Duration:</span>
+						<Badge variant="outline" class="font-mono">
+							{formatElapsedTime(elapsedTime)}
+						</Badge>
+					</div>
+				</div>
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action 
+				onclick={endInterview}
+				disabled={isEndingInterview}
+				class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+			>
+				{#if isEndingInterview}
+					<div class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-destructive-foreground border-t-transparent"></div>
+					Ending Interview...
+				{:else}
+					<PhoneOff size={16} class="mr-2" />
+					End Interview
+				{/if}
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
