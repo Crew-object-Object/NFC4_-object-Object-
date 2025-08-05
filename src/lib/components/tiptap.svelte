@@ -15,7 +15,8 @@
 	import * as Y from 'yjs';
 	import TiptapCollabProvider from '@tiptap-pro/provider';
 	// import jsonwebtoken from 'jsonwebtoken';
-	import { authClient } from './auth-client';
+	import { authClient } from '../auth-client';
+	import { PencilIcon } from 'lucide-svelte';
 
 	let element: HTMLDivElement;
 	let editor = $state<Editor | null>(null);
@@ -25,7 +26,7 @@
 
 	// Language state management
 	let selectedLanguage = $state<string>('plaintext');
-	
+
 	// Available languages for syntax highlighting
 	const availableLanguages = [
 		{ value: 'plaintext', label: 'Plain Text' },
@@ -51,16 +52,15 @@
 	];
 
 	onMount(() => {
-
 		editor = new Editor({
 			element: element,
 			extensions: [
 				StarterKit.configure({
-					codeBlock: false, // Disable default code block to use CodeBlockLowlight
+					codeBlock: false // Disable default code block to use CodeBlockLowlight
 				}),
 				CodeBlockLowlight.configure({
 					lowlight,
-					defaultLanguage: selectedLanguage,
+					defaultLanguage: selectedLanguage
 				}),
 				Collaboration.configure({
 					document: doc // Configure Y.Doc for collaboration
@@ -117,9 +117,13 @@
 </script>
 
 {#if editor}
-	<div class="flex items-center gap-1 p-2">
+	<div class="mb-2 flex items-center gap-1">
 		<!-- Code Block Toggle -->
-		<div class="flex items-center gap-1">
+		<div class="flex items-center gap-1 w-full">
+			<p class="grow flex items-center gap-2 text-sm font-semibold">
+				<PencilIcon size={12} />
+				Code Editor
+			</p>
 			<Toggle
 				pressed={isCodeBlockActive}
 				onclick={() => editor?.chain().focus().toggleCodeBlock().run()}
@@ -129,16 +133,13 @@
 			>
 				<CodeIcon size={16} />
 			</Toggle>
-			
+
 			{#if isCodeBlockActive}
-				<Select.Root
-					type="single"
-					value={selectedLanguage}
-					onValueChange={handleLanguageChange}
-				>
+				<Select.Root type="single" value={selectedLanguage} onValueChange={handleLanguageChange}>
 					<Select.Trigger class="h-8 w-[140px] text-xs">
 						<span class="truncate">
-							{availableLanguages.find(lang => lang.value === selectedLanguage)?.label || 'Select Language'}
+							{availableLanguages.find((lang) => lang.value === selectedLanguage)?.label ||
+								'Select Language'}
 						</span>
 					</Select.Trigger>
 					<Select.Content class="max-h-[200px]">

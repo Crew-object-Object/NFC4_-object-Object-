@@ -1,17 +1,19 @@
 <script>
-	import Tiptap from '$lib/tiptap.svelte';
+	import Tiptap from '$lib/components/tiptap.svelte';
 	import { Pane, PaneGroup, PaneResizer } from 'paneforge';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
 	import GripHorizontalIcon from '@lucide/svelte/icons/grip-horizontal';
+	import VideoIcon from '@lucide/svelte/icons/video';
+	import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
 </script>
 
-<main class="h-px grow p-4">
+<main class="h-px grow px-4 py-0">
 	<div class="h-full border rounded-lg overflow-hidden">
 		<PaneGroup direction="horizontal">
 			<!-- Editor Section -->
 			<Pane defaultSize={60} minSize={40}>
 				<div class="bg-background h-full flex flex-col">
-					<div class="flex-1 p-4">
+					<div class="flex-1 px-4 py-2">
 						<Tiptap />
 					</div>
 				</div>
@@ -29,8 +31,9 @@
 					<!-- Video Section -->
 					<Pane defaultSize={50} minSize={25}>
 						<div class="bg-background h-full flex flex-col">
-							<div class="p-4 border-b">
-								<h3 class="text-md font-semibold">Video Call</h3>
+							<div class="px-4 py-2 border-b flex items-center gap-2">
+								<VideoIcon size={16} />
+								<h3 class="text-sm font-medium">Video Call</h3>
 							</div>
 							<div class="flex-1 bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
 								<div class="text-center text-slate-500">
@@ -52,8 +55,9 @@
 					<!-- Chat Section -->
 					<Pane defaultSize={50} minSize={25}>
 						<div class="bg-background h-full flex flex-col">
-							<div class="p-4 border-b">
-								<h3 class="text-md font-semibold">Chat</h3>
+							<div class="px-4 py-2 border-b flex items-center gap-2">
+								<MessageCircleIcon size={16} />
+								<h3 class="text-sm font-medium">Chat</h3>
 							</div>
 							<div class="flex-1 p-4 overflow-y-auto">
 								<div class="space-y-3">
