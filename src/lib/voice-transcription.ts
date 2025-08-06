@@ -1,4 +1,5 @@
 import type { ILocalAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
+import { PUBLIC_WHISPER_API_URL } from '$env/static/public';
 
 export interface TranscriptionMessage {
 	uid: string;
@@ -52,7 +53,7 @@ export class VoiceTranscriptionService {
 		return `interview_transcript_${roomId}`;
 	}
 
-	private readonly WS_URL = "ws://localhost:9090";
+	private readonly WS_URL = PUBLIC_WHISPER_API_URL;
 
 	// AudioWorklet processor code for downsampling to 16kHz
 	private readonly audioWorkletCode = `
@@ -127,9 +128,9 @@ export class VoiceTranscriptionService {
 
 	// Generate a unique client ID
 	private generateUUID(): string {
-		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-			const r = Math.random() * 16 | 0;
-			const v = c === 'x' ? r : (r & 0x3 | 0x8);
+		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+			const r = (Math.random() * 16) | 0;
+			const v = c === 'x' ? r : (r & 0x3) | 0x8;
 			return v.toString(16);
 		});
 	}
@@ -142,19 +143,19 @@ export class VoiceTranscriptionService {
 			this.userId = this.generateUUID();
 
 			this.ws.onopen = () => {
-				console.log("Voice transcription WebSocket connected");
-				
+				console.log('Voice transcription WebSocket connected');
+
 				// Send initial configuration
 				const initMessage: TranscriptionMessage = {
 					uid: this.userId!,
-					language: "en",
-					task: "transcribe",
-					model: "tiny.en",  // Use English-only tiny model for fastest CPU inference
+					language: 'en',
+					task: 'transcribe',
+					model: 'tiny.en', // Use English-only tiny model for fastest CPU inference
 					use_vad: true,
 					max_clients: 1,
 					max_connection_time: 600
 				};
-				
+
 				if (this.ws) {
 					this.ws.send(JSON.stringify(initMessage));
 				}
@@ -164,52 +165,53 @@ export class VoiceTranscriptionService {
 			this.ws.onmessage = (event) => {
 				try {
 					const data = JSON.parse(event.data) as TranscriptionResult;
-					
+
 					// Check if it's our client
 					if (data.uid && data.uid !== this.userId) {
 						return;
 					}
-					
+
 					// Server ready signal
-					if (data.message === "SERVER_READY") {
+					if (data.message === 'SERVER_READY') {
 						this.isServerReady = true;
-						console.log("Transcription server ready");
-						this.connectionHandlers.forEach(handler => handler());
+						console.log('Transcription server ready');
+						this.connectionHandlers.forEach((handler) => handler());
 						return;
 					}
-					
+
 					// Handle transcription results
 					if (data.segments && Array.isArray(data.segments)) {
-						const newText = data.segments.map((seg: any) => seg.text).join(" ");
+						const newText = data.segments.map((seg: any) => seg.text).join(' ');
 						this.addToTranscriptHistory(newText);
-						this.transcriptionHandlers.forEach(handler => handler({ ...data, text: newText }));
+						this.transcriptionHandlers.forEach((handler) => handler({ ...data, text: newText }));
 					} else if (data.text) {
 						this.addToTranscriptHistory(data.text);
-						this.transcriptionHandlers.forEach(handler => handler(data));
+						this.transcriptionHandlers.forEach((handler) => handler(data));
 					}
-					
 				} catch (e) {
-					console.log("Non-JSON transcription message:", event.data);
+					console.log('Non-JSON transcription message:', event.data);
 				}
 			};
 
 			this.ws.onclose = () => {
-				console.log("Voice transcription WebSocket disconnected");
+				console.log('Voice transcription WebSocket disconnected');
 				this.isConnected = false;
 				this.isServerReady = false;
-				this.disconnectionHandlers.forEach(handler => handler());
+				this.disconnectionHandlers.forEach((handler) => handler());
 			};
 
 			this.ws.onerror = (error) => {
-				console.error("Voice transcription WebSocket error:", error);
-				this.errorHandlers.forEach(handler => handler("WebSocket connection failed"));
-				reject(new Error("WebSocket connection failed"));
+				console.error('Voice transcription WebSocket error:', error);
+				this.errorHandlers.forEach((handler) => handler('WebSocket connection failed'));
+				reject(new Error('WebSocket connection failed'));
 			};
 		});
 	}
 
 	// Setup audio processing for transcription
-	private async setupAudioProcessing(audioTrack: ILocalAudioTrack | MediaStreamTrack): Promise<void> {
+	private async setupAudioProcessing(
+		audioTrack: ILocalAudioTrack | MediaStreamTrack
+	): Promise<void> {
 		try {
 			// Create audio context
 			this.audioContext = new AudioContext();
@@ -228,7 +230,7 @@ export class VoiceTranscriptionService {
 			// Handle processed audio
 			this.workletNode.port.onmessage = (event) => {
 				const audio16k = event.data as Float32Array;
-				
+
 				if (this.ws && this.ws.readyState === WebSocket.OPEN && this.isServerReady) {
 					// Send raw Float32Array as WhisperLive expects
 					this.ws.send(audio16k);
@@ -237,7 +239,7 @@ export class VoiceTranscriptionService {
 
 			// Connect audio source
 			let mediaStream: MediaStream;
-			
+
 			if (audioTrack instanceof MediaStreamTrack) {
 				// Direct MediaStreamTrack
 				mediaStream = new MediaStream([audioTrack]);
@@ -248,7 +250,7 @@ export class VoiceTranscriptionService {
 					const track = agoraTrack.getMediaStreamTrack();
 					mediaStream = new MediaStream([track]);
 				} else {
-					throw new Error("Unable to get MediaStreamTrack from Agora audio track");
+					throw new Error('Unable to get MediaStreamTrack from Agora audio track');
 				}
 			}
 
@@ -256,31 +258,34 @@ export class VoiceTranscriptionService {
 			this.sourceNode.connect(this.workletNode);
 
 			URL.revokeObjectURL(workletUrl);
-			console.log("Audio processing setup complete");
-
+			console.log('Audio processing setup complete');
 		} catch (error) {
-			console.error("Error setting up audio processing:", error);
+			console.error('Error setting up audio processing:', error);
 			throw error;
 		}
 	}
 
 	// Start transcription for local audio (interviewer/interviewee speaking)
-	async startLocalTranscription(audioTrack: ILocalAudioTrack, roomId: string, speakerName?: string): Promise<void> {
+	async startLocalTranscription(
+		audioTrack: ILocalAudioTrack,
+		roomId: string,
+		speakerName?: string
+	): Promise<void> {
 		try {
 			this.roomId = roomId;
 			this.userId = this.generateUUID();
 			this.speakerType = 'local';
 			this.speakerName = speakerName || 'You';
-			
+
 			// Connect to transcription service
 			await this.connectWebSocket();
-			
+
 			// Wait for server to be ready
 			await new Promise<void>((resolve, reject) => {
 				const timeoutId = setTimeout(() => {
 					reject(new Error('Server ready timeout'));
 				}, 10000); // 10 second timeout
-				
+
 				const checkReady = () => {
 					if (this.isServerReady) {
 						clearTimeout(timeoutId);
@@ -294,38 +299,41 @@ export class VoiceTranscriptionService {
 
 			// Setup audio processing
 			await this.setupAudioProcessing(audioTrack);
-			
-			this.isConnected = true;
-			console.log("Local voice transcription started");
 
+			this.isConnected = true;
+			console.log('Local voice transcription started');
 		} catch (error) {
-			console.error("Error starting local transcription:", error);
+			console.error('Error starting local transcription:', error);
 			this.cleanup();
 			throw error;
 		}
 	}
 
 	// Start transcription for remote audio (other participant speaking)
-	async startRemoteTranscription(remoteUser: IAgoraRTCRemoteUser, roomId: string, speakerName?: string): Promise<void> {
+	async startRemoteTranscription(
+		remoteUser: IAgoraRTCRemoteUser,
+		roomId: string,
+		speakerName?: string
+	): Promise<void> {
 		try {
 			this.roomId = roomId;
 			this.userId = this.generateUUID();
 			this.speakerType = 'remote';
 			this.speakerName = speakerName || 'Other';
-			
+
 			if (!remoteUser.audioTrack) {
-				throw new Error("Remote user has no audio track");
+				throw new Error('Remote user has no audio track');
 			}
 
 			// Connect to transcription service
 			await this.connectWebSocket();
-			
+
 			// Wait for server to be ready
 			await new Promise<void>((resolve, reject) => {
 				const timeoutId = setTimeout(() => {
 					reject(new Error('Server ready timeout'));
 				}, 10000); // 10 second timeout
-				
+
 				const checkReady = () => {
 					if (this.isServerReady) {
 						clearTimeout(timeoutId);
@@ -340,17 +348,16 @@ export class VoiceTranscriptionService {
 			// Get the MediaStreamTrack from remote audio
 			const remoteAudioTrack = (remoteUser.audioTrack as any).getMediaStreamTrack();
 			if (!remoteAudioTrack) {
-				throw new Error("Unable to get MediaStreamTrack from remote audio");
+				throw new Error('Unable to get MediaStreamTrack from remote audio');
 			}
 
 			// Setup audio processing
 			await this.setupAudioProcessing(remoteAudioTrack);
-			
-			this.isConnected = true;
-			console.log("Remote voice transcription started");
 
+			this.isConnected = true;
+			console.log('Remote voice transcription started');
 		} catch (error) {
-			console.error("Error starting remote transcription:", error);
+			console.error('Error starting remote transcription:', error);
 			this.cleanup();
 			throw error;
 		}
@@ -372,7 +379,7 @@ export class VoiceTranscriptionService {
 		// Get existing transcript from localStorage
 		const existingTranscript = this.getTranscriptFromLocalStorage(this.roomId);
 		existingTranscript.push(entry);
-		
+
 		// Save back to localStorage
 		this.saveTranscriptToLocalStorage(this.roomId, existingTranscript);
 
@@ -419,13 +426,13 @@ export class VoiceTranscriptionService {
 			const key = VoiceTranscriptionService.getTranscriptKey(roomId);
 			const stored = localStorage.getItem(key);
 			const history = stored ? JSON.parse(stored) : [];
-			
+
 			console.log('Retrieved transcript from localStorage:', {
 				roomId,
 				entryCount: history.length,
 				key
 			});
-			
+
 			return history;
 		} catch (error) {
 			console.error('Error reading transcript from localStorage:', error);
@@ -454,13 +461,13 @@ export class VoiceTranscriptionService {
 	static getFormattedTranscript(roomId: string): string {
 		const history = VoiceTranscriptionService.getTranscriptHistory(roomId);
 		if (history.length === 0) {
-			return "No transcript available yet.";
+			return 'No transcript available yet.';
 		}
 
 		return history
-			.map(entry => {
-				const time = new Date(entry.timestamp).toLocaleTimeString([], { 
-					hour: '2-digit', 
+			.map((entry) => {
+				const time = new Date(entry.timestamp).toLocaleTimeString([], {
+					hour: '2-digit',
 					minute: '2-digit',
 					second: '2-digit'
 				});
@@ -507,12 +514,17 @@ export class VoiceTranscriptionService {
 		// Get current history from localStorage and add test entries
 		const currentHistory = VoiceTranscriptionService.getTranscriptHistory(roomId);
 		const updatedHistory = [...currentHistory, ...testEntries];
-		
+
 		// Save to localStorage
 		try {
 			const key = VoiceTranscriptionService.getTranscriptKey(roomId);
 			localStorage.setItem(key, JSON.stringify(updatedHistory));
-			console.log('Added test transcript entries to localStorage for room:', roomId, 'Total entries:', updatedHistory.length);
+			console.log(
+				'Added test transcript entries to localStorage for room:',
+				roomId,
+				'Total entries:',
+				updatedHistory.length
+			);
 		} catch (error) {
 			console.error('Error saving test transcript to localStorage:', error);
 		}
@@ -523,7 +535,7 @@ export class VoiceTranscriptionService {
 	// Stop transcription
 	stop(): void {
 		this.cleanup();
-		console.log("Voice transcription stopped");
+		console.log('Voice transcription stopped');
 	}
 
 	// Cleanup resources

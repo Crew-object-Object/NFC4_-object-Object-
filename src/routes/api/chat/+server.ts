@@ -4,10 +4,11 @@ import { VoiceTranscriptionService } from '$lib/voice-transcription';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { convertToModelMessages, stepCountIs, streamText, tool, type UIMessage } from 'ai';
 import { z } from 'zod';
+import { LMSTUDIO_API_URL } from '$env/static/private';
 
 const lmstudio = createOpenAICompatible({
 	name: 'lmstudio',
-	baseURL: 'http://192.168.56.1:1234/v1'
+	baseURL: LMSTUDIO_API_URL
 });
 
 export async function POST({ request, url }) {
@@ -16,7 +17,8 @@ export async function POST({ request, url }) {
 		return new Response('Unauthorized', { status: 401 });
 	}
 
-	const { messages, roomId: requestRoomId }: { messages: UIMessage[]; roomId?: string } = await request.json();
+	const { messages, roomId: requestRoomId }: { messages: UIMessage[]; roomId?: string } =
+		await request.json();
 
 	// Extract roomId from request body or from message content
 	let roomId = requestRoomId;
@@ -25,10 +27,12 @@ export async function POST({ request, url }) {
 		const recentMessages = messages.slice(-3);
 		for (const msg of recentMessages) {
 			if (msg.role === 'user') {
-				const textPart = msg.parts?.find(part => part.type === 'text');
+				const textPart = msg.parts?.find((part) => part.type === 'text');
 				if (textPart) {
 					// Look for roomId in quotes or after "roomId:"
-					const roomMatch = textPart.text?.match(/roomId[:\s]*['""]([a-zA-Z0-9_-]+)['""]|room[:\s]+([a-zA-Z0-9_-]+)/i);
+					const roomMatch = textPart.text?.match(
+						/roomId[:\s]*['""]([a-zA-Z0-9_-]+)['""]|room[:\s]+([a-zA-Z0-9_-]+)/i
+					);
 					if (roomMatch) {
 						roomId = roomMatch[1] || roomMatch[2];
 						console.log('Extracted roomId from message:', roomId);
@@ -146,28 +150,32 @@ export async function POST({ request, url }) {
 				}
 			}),
 			getTranscriptHistory: tool({
-				description: 'Get the complete voice transcription history for the current interview session. This includes all spoken words from both the interviewer and interviewee with timestamps.',
+				description:
+					'Get the complete voice transcription history for the current interview session. This includes all spoken words from both the interviewer and interviewee with timestamps.',
 				inputSchema: z.object({
-					roomId: z.string().optional().describe('Room ID for the interview session (if not provided, will use current room)')
+					roomId: z
+						.string()
+						.optional()
+						.describe('Room ID for the interview session (if not provided, will use current room)')
 				}),
 				execute: async ({ roomId: requestedRoomId }) => {
 					const targetRoomId = requestedRoomId || roomId;
 					console.log('Getting transcript history for room:', targetRoomId);
-					
+
 					if (!targetRoomId) {
 						return { error: 'No room ID provided and no current room context available' };
 					}
-					
+
 					const transcript = VoiceTranscriptionService.getFormattedTranscript(targetRoomId);
 					const history = VoiceTranscriptionService.getTranscriptHistory(targetRoomId);
-					
+
 					console.log('Transcript history found:', {
 						roomId: targetRoomId,
 						entryCount: history.length,
 						hasTranscript: transcript.length > 0
 					});
-					
-					return { 
+
+					return {
 						transcript,
 						entryCount: history.length,
 						roomId: targetRoomId,
@@ -176,11 +184,16 @@ export async function POST({ request, url }) {
 				}
 			}),
 			generateFollowUpQuestions: tool({
-				description: 'Generate intelligent follow-up questions based on the conversation transcript and current code. Use this to help interviewers ask relevant technical questions.',
+				description:
+					'Generate intelligent follow-up questions based on the conversation transcript and current code. Use this to help interviewers ask relevant technical questions.',
 				inputSchema: z.object({
 					roomId: z.string().optional().describe('Room ID for the interview session'),
-					currentCode: z.string().optional().describe('Current code being discussed in the interview'),
-					questionType: z.enum(['technical', 'behavioral', 'problem-solving', 'clarification'])
+					currentCode: z
+						.string()
+						.optional()
+						.describe('Current code being discussed in the interview'),
+					questionType: z
+						.enum(['technical', 'behavioral', 'problem-solving', 'clarification'])
 						.optional()
 						.describe('Type of follow-up questions to generate')
 				}),
@@ -189,67 +202,121 @@ export async function POST({ request, url }) {
 					if (!targetRoomId) {
 						return { error: 'No room ID provided and no current room context available' };
 					}
-					
-					const transcript = VoiceTranscriptionService.getFormattedTranscript(targetRoomId);
+
 					const history = VoiceTranscriptionService.getTranscriptHistory(targetRoomId);
-					
-					// Generate contextual follow-up questions based on transcript and code
+
+					// Generate contextual follow-up questions based on the last message
 					const suggestions = [];
-					
+
 					if (history.length === 0) {
 						suggestions.push(
 							"What's your approach to solving this problem?",
-							"Can you walk me through your thought process?",
+							'Can you walk me through your thought process?',
 							"What's the first step you'd take?"
 						);
 					} else {
-						// Analyze recent conversation for context
-						const recentEntries = history.slice(-5);
-						const lastSpeaker = recentEntries[recentEntries.length - 1]?.speaker;
-						const intervieweeEntries = recentEntries.filter(e => e.speaker === 'remote');
+						// Get only the last message to generate contextual questions
+						const lastEntry = history[history.length - 1];
+						const lastMessage = lastEntry.text.toLowerCase();
+						const lastSpeaker = lastEntry.speaker;
 						
-						if (questionType === 'technical' && currentCode) {
+						console.log('Generating questions based on last message:', {
+							speaker: lastSpeaker,
+							text: lastEntry.text,
+							questionType
+						});
+
+						// Generate questions based on the actual content of the last message
+						if (lastMessage.includes('algorithm') || lastMessage.includes('approach')) {
 							suggestions.push(
-								"Can you explain the time complexity of this solution?",
-								"What edge cases should we consider?",
-								"How would you optimize this further?",
-								"Can you trace through this algorithm with an example?"
+								'Can you explain why you chose this particular algorithm?',
+								'What other algorithms did you consider for this problem?',
+								'How does this approach compare to alternatives?'
 							);
-						} else if (questionType === 'clarification') {
+						}
+						
+						if (lastMessage.includes('complexity') || lastMessage.includes('performance') || lastMessage.includes('time')) {
 							suggestions.push(
-								"Can you elaborate on that approach?",
-								"What made you choose this solution?",
-								"Are there any alternative approaches you considered?"
+								'Can you walk through the complexity analysis step by step?',
+								'What happens to performance with very large inputs?',
+								'Are there ways to optimize this further?'
 							);
-						} else if (questionType === 'problem-solving') {
+						}
+						
+						if (lastMessage.includes('sort') || lastMessage.includes('merge') || lastMessage.includes('quick')) {
 							suggestions.push(
-								"How would you test this solution?",
-								"What if the input size was much larger?",
-								"How would you handle invalid inputs?"
+								'What are the trade-offs between different sorting approaches?',
+								'When would you choose this sorting method over others?',
+								'How does this handle edge cases like duplicate elements?'
+							);
+						}
+						
+						if (lastMessage.includes('data structure') || lastMessage.includes('array') || lastMessage.includes('list')) {
+							suggestions.push(
+								'Why did you choose this data structure?',
+								'What are the memory implications of this choice?',
+								'How would this scale with different data sizes?'
+							);
+						}
+						
+						if (lastMessage.includes('test') || lastMessage.includes('debug') || lastMessage.includes('error')) {
+							suggestions.push(
+								'How would you test this systematically?',
+								'What edge cases should we consider?',
+								'How would you debug if this wasn\'t working?'
+							);
+						}
+						
+						// If the last speaker was the candidate (remote), ask follow-up questions
+						if (lastSpeaker === 'remote') {
+							suggestions.push(
+								'Can you elaborate on that point?',
+								'What made you think of that solution?',
+								'Can you trace through an example?'
+							);
+						}
+						
+						// Add code-specific questions if code is present
+						if (currentCode) {
+							suggestions.push(
+								'Can you walk through this code with a specific example?',
+								'What would happen if we changed the input constraints?',
+								'How does this implementation handle edge cases?'
+							);
+						}
+						
+						// If we don't have enough contextual questions, add some general ones
+						if (suggestions.length < 3) {
+							suggestions.push(
+								'Can you explain your reasoning behind this approach?',
+								'What assumptions are you making about the input?',
+								'How confident are you in this solution?'
 							);
 						}
 					}
-					
+
 					return {
-						suggestions,
-						transcriptLength: history.length,
+						suggestions: suggestions.slice(0, 5), // Limit to 5 suggestions
+						lastMessage: history.length > 0 ? history[history.length - 1].text : null,
+						lastSpeaker: history.length > 0 ? history[history.length - 1].speaker : null,
 						questionType,
 						hasCode: !!currentCode
 					};
 				}
 			}),
 			addTestTranscript: tool({
-				description: 'Add test transcript entries for debugging purposes. Use this to test the transcript functionality.',
+				description:
+					'Add test transcript entries for debugging purposes. Use this to test the transcript functionality.',
 				inputSchema: z.object({
 					roomId: z.string().describe('Room ID to add test transcript entries for')
 				}),
 				execute: async ({ roomId: testRoomId }) => {
 					console.log('Adding test transcript entries for room:', testRoomId);
-					
+
 					const entriesAdded = VoiceTranscriptionService.addTestTranscriptEntries(testRoomId);
 					const updatedHistory = VoiceTranscriptionService.getTranscriptHistory(testRoomId);
 					const transcript = VoiceTranscriptionService.getFormattedTranscript(testRoomId);
-					
+
 					return {
 						message: 'Test transcript entries added successfully',
 						entriesAdded,
