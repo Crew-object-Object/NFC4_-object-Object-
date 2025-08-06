@@ -5,6 +5,7 @@
 	import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import * as Avatar from '$lib/components/ui/avatar';
+	import { ScrollArea } from '$lib/components/ui/scroll-area';
 
 	export let roomId: string;
 
@@ -26,11 +27,10 @@
 	let messages: Message[] = [];
 	let newMessage = '';
 	let chatContainer: HTMLDivElement;
+	let scrollAreaElement: any;
 	let isLoading = false;
 	let sseConnected = false;
-	let connectionError = '';
-
-	// Initialize SSE connection
+	let connectionError = '';	// Initialize SSE connection
 	const initializeSSE = async () => {
 		if (!roomId) return;
 
@@ -58,7 +58,6 @@
 
 			if (result.success) {
 				messages = result.data;
-				setTimeout(scrollToBottom, 100);
 			} else {
 				console.error('Failed to fetch messages:', result.error);
 			}
@@ -97,10 +96,30 @@
 
 	// Scroll to bottom of chat
 	const scrollToBottom = () => {
-		if (chatContainer) {
-			chatContainer.scrollTop = chatContainer.scrollHeight;
-		}
+		// Use requestAnimationFrame to ensure DOM has updated
+		requestAnimationFrame(() => {
+			if (scrollAreaElement) {
+				// Find the ScrollArea viewport
+				const viewport = scrollAreaElement.querySelector('[data-radix-scroll-area-viewport]');
+				if (viewport) {
+					viewport.scrollTop = viewport.scrollHeight;
+				}
+			} else if (chatContainer) {
+				// Fallback - scroll the container itself
+				chatContainer.scrollTop = chatContainer.scrollHeight;
+			}
+		});
 	};
+
+	// Auto-scroll when messages change
+	$: if (messages.length > 0) {
+		setTimeout(scrollToBottom, 50);
+	}
+
+	// Auto-scroll when messages change
+	$: if (messages.length > 0) {
+		setTimeout(scrollToBottom, 50);
+	}
 
 	// Format timestamp
 	const formatTime = (timestamp: string) => {
@@ -134,6 +153,8 @@
 	const handleNewMessage = (message: ChatMessage) => {
 		// Add new message to the list
 		messages = [...messages, message];
+		
+		// Scroll to bottom after a short delay to ensure DOM is updated
 		setTimeout(scrollToBottom, 100);
 		
 		// Log system alerts for debugging
@@ -186,8 +207,8 @@
 </script>
 
 <!-- Chat Section -->
-<div class="flex h-full flex-col bg-background">
-	<div class="flex items-center gap-2 border-b px-4 py-2">
+<div class="flex h-full flex-col bg-background min-h-0">
+	<div class="flex items-center gap-2 border-b px-4 py-2 flex-shrink-0">
 		<MessageCircleIcon size={16} />
 		<h3 class="text-sm font-medium">Chat</h3>
 		<span class="text-xs text-muted-foreground">({messages.length})</span>
@@ -209,88 +230,90 @@
 			{/if}
 		</div>
 	</div>
-	<div class="flex-1 overflow-y-auto p-4" bind:this={chatContainer}>
-		{#if messages.length === 0}
-			<div class="py-8 text-center text-sm text-muted-foreground">
-				<MessageCircleIcon size={32} class="mx-auto mb-2 opacity-50" />
-				<p>No messages yet. Start the conversation!</p>
-			</div>
-		{:else}
-			<div class="space-y-4">
-				{#each messages as message (message.messageId)}
-					{@const isCurrentUser = currentUser?.id === message.from.id}
-					{@const isSystemAlert = message.content.includes('SYSTEM ALERT')}
-					
-					{#if isSystemAlert}
-						<!-- System Alert Message - Full Width -->
-						<div class="w-full">
-							<div class="mx-auto max-w-fit rounded-lg border-2 border-orange-200 bg-orange-50 px-4 py-3 dark:border-orange-800 dark:bg-orange-950">
-								<div class="flex items-center gap-2">
-									<div class="text-orange-600 dark:text-orange-400">
-										🚨
-									</div>
-									<p class="text-sm font-medium text-orange-800 dark:text-orange-200">
-										{message.content}
-									</p>
-								</div>
-								<div class="mt-1 text-center">
-									<span class="text-xs text-orange-600 dark:text-orange-400">
-										{formatTime(message.timestamp)}
-									</span>
-								</div>
-							</div>
-						</div>
-					{:else}
-						<!-- Regular Chat Message -->
-						<div class="flex {isCurrentUser ? 'justify-end' : 'justify-start'}">
-							<div
-								class="flex items-start space-x-2 max-w-[70%] {isCurrentUser
-									? 'flex-row-reverse space-x-reverse'
-									: ''}"
-							>
-								<!-- User Avatar -->
-								<div class="flex-shrink-0">
-									<Avatar.Root class="h-8 w-8 ring-2 ring-white dark:ring-gray-800">
-										<Avatar.Image 
-											src={message.from.image} 
-											alt={message.from.name}
-											class="object-cover"
-										/>
-										<Avatar.Fallback class="bg-primary text-primary-foreground text-xs font-semibold">
-											{getInitials(message.from.name)}
-										</Avatar.Fallback>
-									</Avatar.Root>
-								</div>
-
-								<!-- Message Content -->
-								<div class="flex flex-col {isCurrentUser ? 'items-end' : 'items-start'}">
-									<div
-										class="rounded-2xl px-4 py-2 max-w-fit {isCurrentUser
-											? 'bg-primary text-primary-foreground'
-											: 'bg-muted text-muted-foreground'}"
-									>
-										<p class="text-sm break-words">{message.content}</p>
-									</div>
-									<div
-										class="mt-1 flex items-center gap-2 {isCurrentUser
-											? 'justify-end'
-											: 'justify-start'}"
-									>
-										<p class="text-xs text-muted-foreground">{message.from.name}</p>
-										<span class="text-xs text-muted-foreground">•</span>
-										<p class="text-xs text-muted-foreground">
-											{formatTime(message.timestamp)}
+	<ScrollArea class="flex-1 min-h-0" bind:this={scrollAreaElement}>
+		<div class="p-4" bind:this={chatContainer}>
+			{#if messages.length === 0}
+				<div class="py-8 text-center text-sm text-muted-foreground">
+					<MessageCircleIcon size={32} class="mx-auto mb-2 opacity-50" />
+					<p>No messages yet. Start the conversation!</p>
+				</div>
+			{:else}
+				<div class="space-y-4">
+					{#each messages as message (message.messageId)}
+						{@const isCurrentUser = currentUser?.id === message.from.id}
+						{@const isSystemAlert = message.content.includes('SYSTEM ALERT')}
+						
+						{#if isSystemAlert}
+							<!-- System Alert Message - Full Width -->
+							<div class="w-full">
+								<div class="mx-auto max-w-fit rounded-lg border-2 border-orange-200 bg-orange-50 px-4 py-3 dark:border-orange-800 dark:bg-orange-950">
+									<div class="flex items-center gap-2">
+										<div class="text-orange-600 dark:text-orange-400">
+											🚨
+										</div>
+										<p class="text-sm font-medium text-orange-800 dark:text-orange-200">
+											{message.content}
 										</p>
 									</div>
+									<div class="mt-1 text-center">
+										<span class="text-xs text-orange-600 dark:text-orange-400">
+											{formatTime(message.timestamp)}
+										</span>
+									</div>
 								</div>
 							</div>
-						</div>
-					{/if}
-				{/each}
-			</div>
-		{/if}
-	</div>
-	<div class="border-t bg-background p-4">
+						{:else}
+							<!-- Regular Chat Message -->
+							<div class="flex {isCurrentUser ? 'justify-end' : 'justify-start'}">
+								<div
+									class="flex items-start space-x-2 max-w-[70%] {isCurrentUser
+										? 'flex-row-reverse space-x-reverse'
+										: ''}"
+								>
+									<!-- User Avatar -->
+									<div class="flex-shrink-0">
+										<Avatar.Root class="h-8 w-8 ring-2 ring-white dark:ring-gray-800">
+											<Avatar.Image 
+												src={message.from.image} 
+												alt={message.from.name}
+												class="object-cover"
+											/>
+											<Avatar.Fallback class="bg-primary text-primary-foreground text-xs font-semibold">
+												{getInitials(message.from.name)}
+											</Avatar.Fallback>
+										</Avatar.Root>
+									</div>
+
+									<!-- Message Content -->
+									<div class="flex flex-col {isCurrentUser ? 'items-end' : 'items-start'}">
+										<div
+											class="rounded-2xl px-4 py-2 max-w-fit {isCurrentUser
+												? 'bg-primary text-primary-foreground'
+												: 'bg-muted text-muted-foreground'}"
+										>
+											<p class="text-sm break-words">{message.content}</p>
+										</div>
+										<div
+											class="mt-1 flex items-center gap-2 {isCurrentUser
+												? 'justify-end'
+												: 'justify-start'}"
+										>
+											<p class="text-xs text-muted-foreground">{message.from.name}</p>
+											<span class="text-xs text-muted-foreground">•</span>
+											<p class="text-xs text-muted-foreground">
+												{formatTime(message.timestamp)}
+											</p>
+										</div>
+									</div>
+								</div>
+							</div>
+						{/if}
+					{/each}
+				</div>
+			{/if}
+		</div>
+	</ScrollArea>
+	<div class="border-t bg-background p-4 flex-shrink-0 min-h-[80px]">
 		<form
 			onsubmit={(e) => {
 				e.preventDefault();

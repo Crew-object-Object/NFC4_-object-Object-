@@ -35,7 +35,6 @@
 		};
 	}
 
-	let showChatbot = $state(false);
 	let input = $state('');
 
 	// Initialize the Chat component with proper API configuration
@@ -122,83 +121,60 @@ ${currentCode}
 </script>
 
 <!-- Floating Chatbot Button -->
-<div class="fixed right-6 bottom-6 z-50">
-	<Button
-		size="lg"
-		class="h-14 w-14 rounded-full bg-primary shadow-lg transition-all duration-200 hover:bg-primary/90 hover:shadow-xl"
-		onclick={() => (showChatbot = true)}
-		title="AI Interview Assistant"
-	>
-		<Bot size={24} />
-	</Button>
-</div>
-
-<!-- Chatbot Sheet -->
-<Sheet.Root bind:open={showChatbot}>
-	<Sheet.Content side="right" class="flex h-full w-full flex-col p-0 sm:max-w-2xl">
-		<Sheet.Header class="border-b p-6 pb-4">
-			<Sheet.Title class="flex items-center gap-2">
-				<Bot size={20} class="text-primary" />
-				AI Interview Assistant
-			</Sheet.Title>
-			<Sheet.Description>
-				Get real-time insights about code complexity, algorithms, and interview guidance.
-			</Sheet.Description>
-		</Sheet.Header>
-
-		<!-- Quick Actions -->
-		<div class="border-b bg-muted/30 p-4">
-			<div class="flex flex-wrap gap-2">
-				<Button
-					size="sm"
-					variant="outline"
-					class="gap-2"
-					onclick={analyzeComplexity}
-					disabled={isLoading || !currentCode.trim()}
-				>
-					{#if isLoading}
-						<div
-							class="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent"
-						></div>
-						Analyzing...
-					{:else}
-						<Zap size={14} />
-						Analyze Code Complexity
-					{/if}
-				</Button>
-			</div>
-		</div>
-
-		<!-- Chat Messages -->
-		<ScrollArea class="flex-1 p-4">
-			<div class="space-y-4">
-				{#if chat.messages.length === 0}
-					<div class="flex h-96 items-center justify-center">
-						<div class="text-center">
-							<div class="mb-4 flex justify-center">
-								<div class="rounded-full bg-primary/10 p-4">
-									<Bot class="h-8 w-8 text-primary" />
-								</div>
-							</div>
-							<h2 class="mb-2 text-xl font-semibold text-foreground">AI Interview Assistant</h2>
-							<p class="text-muted-foreground">
-								I can help you analyze code complexity, understand algorithms, and provide insights
-								during the interview.
-							</p>
-						</div>
-					</div>
+<!-- Chatbot Content -->
+<div class="flex h-full flex-col">
+	<!-- Quick Actions -->
+	<div class="border-b bg-muted/30 p-4">
+		<div class="flex flex-wrap gap-2">
+			<Button
+				size="sm"
+				variant="outline"
+				class="gap-2"
+				onclick={analyzeComplexity}
+				disabled={isLoading || !currentCode.trim()}
+			>
+				{#if isLoading}
+					<div
+						class="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent"
+					></div>
+					Analyzing...
 				{:else}
-					<ScrollArea class="h-fit max-h-64">
-						<div class="space-y-4 pr-4">
-							{#each chat.messages as message, messageIndex}
-								<div class="flex gap-3 {message.role === 'user' ? 'justify-end' : 'justify-start'}">
-									{#if message.role === 'assistant'}
-										<div
-											class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"
-										>
-											<Bot size={16} class="text-primary" />
-										</div>
-									{/if}
+					<Zap size={14} />
+					Analyze Code Complexity
+				{/if}
+			</Button>
+		</div>
+	</div>
+
+	<!-- Chat Messages -->
+	<ScrollArea class="flex-1 p-4">
+		<div class="space-y-4">
+			{#if chat.messages.length === 0}
+				<div class="flex h-96 items-center justify-center">
+					<div class="text-center">
+						<div class="mb-4 flex justify-center">
+							<div class="rounded-full bg-primary/10 p-4">
+								<Bot class="h-8 w-8 text-primary" />
+							</div>
+						</div>
+						<h2 class="mb-2 text-xl font-semibold text-foreground">AI Interview Assistant</h2>
+						<p class="text-muted-foreground">
+							I can help you analyze code complexity, understand algorithms, and provide insights
+							during the interview.
+						</p>
+					</div>
+				</div>
+			{:else}
+				<div class="space-y-4 pr-4">
+					{#each chat.messages as message, messageIndex}
+						<div class="flex gap-3 {message.role === 'user' ? 'justify-end' : 'justify-start'}">
+							{#if message.role === 'assistant'}
+								<div
+									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"
+								>
+									<Bot size={16} class="text-primary" />
+								</div>
+							{/if}
 
 									<div class="max-w-[80%] space-y-2">
 										<div
@@ -337,38 +313,37 @@ ${currentCode}
 											<span class="text-xs font-medium text-primary-foreground">You</span>
 										</div>
 									{/if}
-								</div>
-							{/each}
+							</div>
+					{/each}
 
-							<!-- Loading indicator -->
-							{#if isLoading}
-								<div class="flex justify-start gap-3">
+					<!-- Loading indicator -->
+					{#if isLoading}
+						<div class="flex justify-start gap-3">
+							<div
+								class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"
+							>
+								<Bot size={16} class="text-primary" />
+							</div>
+							<div class="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+								<div class="flex gap-1">
+									<div class="h-2 w-2 animate-bounce rounded-full bg-primary/60"></div>
 									<div
-										class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10"
-									>
-										<Bot size={16} class="text-primary" />
-									</div>
-									<div class="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-										<div class="flex gap-1">
-											<div class="h-2 w-2 animate-bounce rounded-full bg-primary/60"></div>
-											<div
-												class="h-2 w-2 animate-bounce rounded-full bg-primary/60"
-												style="animation-delay: 0.1s"
-											></div>
-											<div
-												class="h-2 w-2 animate-bounce rounded-full bg-primary/60"
-												style="animation-delay: 0.2s"
-											></div>
-										</div>
-										<span class="text-xs text-muted-foreground">AI is thinking...</span>
-									</div>
+										class="h-2 w-2 animate-bounce rounded-full bg-primary/60"
+										style="animation-delay: 0.1s"
+									></div>
+									<div
+										class="h-2 w-2 animate-bounce rounded-full bg-primary/60"
+										style="animation-delay: 0.2s"
+									></div>
 								</div>
-							{/if}
+								<span class="text-xs text-muted-foreground">AI is thinking...</span>
+							</div>
 						</div>
-					</ScrollArea>
-				{/if}
-			</div>
-		</ScrollArea>
+					{/if}
+				</div>
+			{/if}
+		</div>
+	</ScrollArea>
 
 		<!-- Input Area -->
 		<div class="border-t bg-background p-4">
@@ -388,5 +363,4 @@ ${currentCode}
 				Press Enter to send, Shift+Enter for new line
 			</div>
 		</div>
-	</Sheet.Content>
-</Sheet.Root>
+</div>

@@ -23,7 +23,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import { Clock, PhoneOff, Timer } from 'lucide-svelte';
+	import { Clock, PhoneOff, Timer, Bot } from 'lucide-svelte';
 	import type { Problem } from '$lib/problemset';
 	import { browser } from '$app/environment';
 	import { authClient, useSession } from '$lib/auth-client';
@@ -367,6 +367,9 @@
 	let isLoadingInterview = $state(true);
 	let interviewScore = $state<string>('');
 	let scoreError = $state<string>('');
+
+	// AI Chatbot state for interviewers
+	let showChatbot = $state(false);
 
 	// Format elapsed time as HH:MM:SS
 	const formatElapsedTime = (seconds: number) => {
@@ -981,7 +984,7 @@
 		</div>
 	{:else}
 		<!-- Interview is active -->
-		<div class="h-full overflow-hidden rounded-lg border">
+		<div class="relative h-full overflow-hidden rounded-lg border">
 			<!-- Interview Header with Timer and End Button -->
 			{#if isInterviewer}
 				<div class="flex items-center justify-between border-b bg-background px-4 py-2">
@@ -1005,20 +1008,32 @@
 							{/if}
 						</div>
 					</div>
-					<Button
-						variant="destructive"
-						size="sm"
-						class="gap-2"
-						onclick={() => {
-							showEndInterviewDialog = true;
-							interviewScore = '';
-							scoreError = '';
-						}}
-						disabled={isEndingInterview}
-					>
-						<PhoneOff size={14} />
-						{isEndingInterview ? 'Ending...' : 'End Interview'}
-					</Button>
+					<div class="flex items-center gap-2">
+						<Button
+							size="sm"
+							variant="outline"
+							class="gap-2"
+							onclick={() => (showChatbot = true)}
+							title="Open AI Assistant"
+						>
+							<Bot size={14} class="text-primary" />
+							<span class="hidden lg:inline">AI Assistant</span>
+						</Button>
+						<Button
+							variant="destructive"
+							size="sm"
+							class="gap-2"
+							onclick={() => {
+								showEndInterviewDialog = true;
+								interviewScore = '';
+								scoreError = '';
+							}}
+							disabled={isEndingInterview}
+						>
+							<PhoneOff size={14} />
+							{isEndingInterview ? 'Ending...' : 'End Interview'}
+						</Button>
+					</div>
 				</div>
 			{/if}
 
@@ -1056,8 +1071,8 @@
 											</div>
 										{/if}
 									</div>
-									{#if isInterviewee}
-										<div class="flex items-center gap-2">
+									<div class="flex items-center gap-2">
+										{#if isInterviewee}
 											<Button
 												size="sm"
 												variant="outline"
@@ -1068,8 +1083,8 @@
 												<PlayIcon size={12} class="mr-1" />
 												Run Tests
 											</Button>
-										</div>
-									{/if}
+										{/if}
+									</div>
 								</div>
 								<div class="flex-1 p-4">
 									<TiptapEditor
@@ -1091,9 +1106,9 @@
 						</PaneResizer>
 
 						<!-- Test Cases Section -->
-						<Pane defaultSize={25} minSize={20}>
+						<Pane defaultSize={25} minSize={20} class="overflow-auto pb-12">
 							<div class="flex h-full flex-col bg-background">
-								<div class="flex items-center justify-between border-b px-4 py-2">
+								<div class="flex flex-shrink-0 items-center justify-between border-b px-4 py-2">
 									<div class="flex items-center gap-2">
 										<FlaskConicalIcon size={16} />
 										<h3 class="text-sm font-medium">Problems & Test Cases</h3>
@@ -1130,7 +1145,7 @@
 										{/if}
 									</div>
 								</div>
-								<div class="flex-1 overflow-y-auto p-2">
+								<ScrollArea class="min-h-0 flex-1 p-2">
 									{#if interviewProblems.length === 0}
 										<div class="py-8 text-center text-sm text-muted-foreground">
 											<FlaskConicalIcon size={32} class="mx-auto mb-2 opacity-50" />
@@ -1230,7 +1245,7 @@
 											{/each}
 										</div>
 									{/if}
-								</div>
+								</ScrollArea>
 							</div>
 						</Pane>
 					</PaneGroup>
@@ -1263,7 +1278,7 @@
 						</PaneResizer>
 
 						<!-- Chat Section -->
-						<Pane defaultSize={50} minSize={25}>
+						<Pane defaultSize={50} minSize={25} class="overflow-auto pb-12">
 							{#if roomId}
 								<InterviewChat {roomId} />
 							{/if}
@@ -1695,5 +1710,20 @@
 
 <!-- AI Chatbot for Interviewers -->
 {#if isInterviewer}
-	<InterviewerChatbot {currentCode} roomId={roomId!} />
+	<Sheet.Root bind:open={showChatbot}>
+		<Sheet.Content side="right" class="w-full sm:max-w-xl">
+			<Sheet.Header>
+				<Sheet.Title class="flex items-center gap-2">
+					<Bot size={20} class="text-primary" />
+					AI Interview Assistant
+				</Sheet.Title>
+				<Sheet.Description>
+					Get real-time assistance and code analysis during the interview.
+				</Sheet.Description>
+			</Sheet.Header>
+			<div class="mt-6">
+				<InterviewerChatbot {currentCode} roomId={roomId!} />
+			</div>
+		</Sheet.Content>
+	</Sheet.Root>
 {/if}
