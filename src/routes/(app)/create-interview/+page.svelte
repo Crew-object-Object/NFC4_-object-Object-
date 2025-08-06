@@ -156,6 +156,7 @@
 
 		// Validate that end time is after start time
 		if (startDate && startTime && endDate && endTime) {
+			// Create proper Date objects with timezone consideration
 			const startDateTime = new Date(`${startDate.toString()}T${startTime}`);
 			const endDateTime = new Date(`${endDate.toString()}T${endTime}`);
 
@@ -164,8 +165,9 @@
 				isValid = false;
 			}
 
-			// Validate that start time is in the future
-			if (startDateTime <= new Date()) {
+			// Validate that start time is in the future (compare with current local time)
+			const now = new Date();
+			if (startDateTime <= now) {
 				errors.startDateTime = 'Start time must be in the future';
 				isValid = false;
 			}
@@ -184,8 +186,9 @@
 		success = false;
 
 		try {
-			const startDateTime = `${startDate!.toString()}T${startTime}`;
-			const endDateTime = `${endDate!.toString()}T${endTime}`;
+			// Create proper Date objects and convert to ISO strings
+			const startDateTime = new Date(`${startDate!.toString()}T${startTime}`);
+			const endDateTime = new Date(`${endDate!.toString()}T${endTime}`);
 
 			const response = await fetch('/api/interviews', {
 				method: 'POST',
@@ -194,8 +197,8 @@
 				},
 				body: JSON.stringify({
 					intervieweeId,
-					startTime: startDateTime,
-					endTime: endDateTime,
+					startTime: startDateTime.toISOString(),
+					endTime: endDateTime.toISOString(),
 					interviewTitle: interviewTitle.trim(),
 					interviewDescription: interviewDescription.trim()
 				})

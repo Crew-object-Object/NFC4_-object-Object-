@@ -18,7 +18,13 @@
 		UserCheck,
 		UserCog,
 		Award,
-		Target
+		Target,
+		ChevronDown,
+		ChevronRight,
+		Code,
+		CheckCircle,
+		XCircle,
+		PlayCircle
 	} from 'lucide-svelte';
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
@@ -48,7 +54,13 @@
 		problems: {
 			id: string;
 			title: string;
+			description: string;
 			score: number;
+			testCases: {
+				testCaseId: string;
+				input: string;
+				output: string;
+			}[];
 		}[];
 	}
 
@@ -59,6 +71,7 @@
 	let searchQuery = $state('');
 	let sortBy = $state('recent');
 	let filterBy = $state('all');
+	let expandedInterviews = $state<Set<string>>(new Set());
 
 	const fetchInterviews = async () => {
 		try {
@@ -139,6 +152,25 @@
 
 	const getTotalProblemsScore = (problems: HistoricalInterview['problems']) => {
 		return problems.reduce((total, problem) => total + problem.score, 0);
+	};
+
+	const getAverageProblemsScore = (problems: HistoricalInterview['problems']) => {
+		if (problems.length === 0) return 0;
+		return Math.round(getTotalProblemsScore(problems) / problems.length);
+	};
+
+	const getPassedTestCases = (problem: HistoricalInterview['problems'][0]) => {
+		if (problem.testCases.length === 0) return 0;
+		return Math.round((problem.score / 100) * problem.testCases.length);
+	};
+
+	const toggleInterviewExpansion = (interviewId: string) => {
+		if (expandedInterviews.has(interviewId)) {
+			expandedInterviews.delete(interviewId);
+		} else {
+			expandedInterviews.add(interviewId);
+		}
+		expandedInterviews = new Set(expandedInterviews);
 	};
 
 	$effect(() => {
@@ -446,7 +478,7 @@
 									{/if}
 								</div>
 
-								<!-- Right: Participant & Score -->
+								<!-- Right: Participant, Score & Expand Button -->
 								<div class="flex items-center space-x-4">
 									<div class="hidden items-center space-x-3 lg:flex">
 										<Avatar class="h-10 w-10 border-2 border-primary/20 shadow-md">
@@ -470,13 +502,28 @@
 										</div>
 									</div>
 
-									<div class="flex items-center">
+									<div class="flex items-center space-x-2">
 										<Badge
 											variant={getScoreVariant(interview.interviewScore)}
 											class={`px-4 py-2 text-base font-bold shadow-md ${getScoreColor(interview.interviewScore)}`}
 										>
 											{interview.interviewScore}%
 										</Badge>
+										
+										{#if interview.problems.length > 0}
+											<Button
+												variant="ghost"
+												size="sm"
+												class="h-8 w-8 p-0 hover:bg-primary/10"
+												onclick={() => toggleInterviewExpansion(interview.id)}
+											>
+												{#if expandedInterviews.has(interview.id)}
+													<ChevronDown class="h-4 w-4 text-primary" />
+												{:else}
+													<ChevronRight class="h-4 w-4 text-primary" />
+												{/if}
+											</Button>
+										{/if}
 									</div>
 								</div>
 							</div>
@@ -520,6 +567,136 @@
 									</div>
 								</div>
 							</div>
+
+							<!-- Expanded Problems Section -->
+							{#if expandedInterviews.has(interview.id) && interview.problems.length > 0}
+								<div class="mt-6 border-t border-border/50 pt-6">
+									<div class="mb-4 flex items-center justify-between">
+										<h4 class="flex items-center gap-2 text-lg font-semibold text-foreground">
+											<Code class="h-5 w-5 text-primary" />
+											Problems Solved
+										</h4>
+										<div class="flex items-center space-x-4 text-sm">
+											<div class="flex items-center space-x-2">
+												<span class="font-medium text-muted-foreground">Average Score:</span>
+												<Badge
+													variant={getScoreVariant(getAverageProblemsScore(interview.problems))}
+													class="px-2 py-1 text-sm font-bold"
+												>
+													{getAverageProblemsScore(interview.problems)}%
+												</Badge>
+											</div>
+										</div>
+									</div>
+
+									<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+										{#each interview.problems as problem (problem.id)}
+											<Card class="border-border/30 bg-card/50 backdrop-blur-sm">
+												<CardHeader class="pb-3">
+													<div class="flex items-start justify-between">
+														<div class="min-w-0 flex-1">
+															<CardTitle class="truncate text-base font-semibold text-foreground">
+																{problem.title}
+															</CardTitle>
+															{#if problem.description}
+																<p class="mt-1 line-clamp-2 text-sm text-muted-foreground">
+																	{problem.description}
+																</p>
+															{/if}
+														</div>
+														<Badge
+															variant={getScoreVariant(problem.score)}
+															class="ml-2 shrink-0 px-2 py-1 text-sm font-bold"
+														>
+															{problem.score}%
+														</Badge>
+													</div>
+												</CardHeader>
+												<CardContent class="pt-0">
+													<div class="space-y-3">
+														<!-- Test Cases Summary -->
+														{#if problem.testCases.length > 0}
+															<div class="flex items-center justify-between text-sm">
+																<span class="font-medium text-muted-foreground">Test Cases</span>
+																<div class="flex items-center space-x-2">
+																	<div class="flex items-center space-x-1">
+																		<CheckCircle class="h-4 w-4 text-green-500" />
+																		<span class="font-semibold text-green-600">
+																			{getPassedTestCases(problem)}
+																		</span>
+																	</div>
+																	<span class="text-muted-foreground">/</span>
+																	<div class="flex items-center space-x-1">
+																		<PlayCircle class="h-4 w-4 text-primary" />
+																		<span class="font-semibold text-foreground">
+																			{problem.testCases.length}
+																		</span>
+																	</div>
+																</div>
+															</div>
+
+															<!-- Test Cases Progress Bar -->
+															<div class="w-full">
+																<div class="h-2 w-full rounded-full bg-muted">
+																	<div
+																		class="h-2 rounded-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-300"
+																		style="width: {problem.score}%"
+																	></div>
+																</div>
+															</div>
+
+															<!-- Individual Test Cases (First 3) -->
+															<div class="space-y-2">
+																{#each problem.testCases.slice(0, 3) as testCase, index (testCase.testCaseId)}
+																	<div class="rounded-lg border border-border/30 bg-muted/30 p-3">
+																		<div class="mb-2 flex items-center justify-between">
+																			<span class="text-xs font-medium text-muted-foreground">
+																				Test Case {index + 1}
+																			</span>
+																			{#if index < getPassedTestCases(problem)}
+																				<CheckCircle class="h-4 w-4 text-green-500" />
+																			{:else}
+																				<XCircle class="h-4 w-4 text-red-500" />
+																			{/if}
+																		</div>
+																		<div class="space-y-1 text-xs">
+																			<div>
+																				<span class="font-medium text-muted-foreground">Input:</span>
+																				<code class="ml-1 rounded bg-muted px-1 py-0.5 font-mono text-foreground">
+																					{testCase.input.length > 30 ? testCase.input.slice(0, 30) + '...' : testCase.input}
+																				</code>
+																			</div>
+																			<div>
+																				<span class="font-medium text-muted-foreground">Expected:</span>
+																				<code class="ml-1 rounded bg-muted px-1 py-0.5 font-mono text-foreground">
+																					{testCase.output.length > 30 ? testCase.output.slice(0, 30) + '...' : testCase.output}
+																				</code>
+																			</div>
+																		</div>
+																	</div>
+																{/each}
+																
+																{#if problem.testCases.length > 3}
+																	<div class="text-center">
+																		<span class="text-xs text-muted-foreground">
+																			+{problem.testCases.length - 3} more test cases
+																		</span>
+																	</div>
+																{/if}
+															</div>
+														{:else}
+															<div class="flex items-center justify-center py-4 text-sm text-muted-foreground">
+																<FileText class="mr-2 h-4 w-4" />
+																No test cases available
+															</div>
+														{/if}
+													</div>
+												</CardContent>
+											</Card>
+										{/each}
+									</div>
+								</div>
+							{/if}
 						</CardContent>
 					</Card>
 				{/each}

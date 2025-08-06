@@ -116,6 +116,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		// Validate datetime format and logic
+		// Parse ISO strings properly to maintain timezone information
 		const startDateTime = new Date(startTime);
 		const endDateTime = new Date(endTime);
 
@@ -123,7 +124,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json(
 				{
 					success: false,
-					error: 'Invalid date format'
+					error: 'Invalid date format. Please use ISO format (YYYY-MM-DDTHH:mm:ss.sssZ)'
 				},
 				{ status: 400 }
 			);
@@ -139,7 +140,9 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		if (startDateTime <= new Date()) {
+		// Compare with current UTC time to ensure consistency across timezones
+		const currentUTC = new Date();
+		if (startDateTime <= currentUTC) {
 			return json(
 				{
 					success: false,
@@ -177,7 +180,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		// Create the interview
+		// Create the interview with UTC timestamps
 		const interview = await prisma.interview.create({
 			data: {
 				intervieweeId,
