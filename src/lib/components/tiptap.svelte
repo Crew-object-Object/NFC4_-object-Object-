@@ -24,8 +24,13 @@
 		isInterviewee?: boolean;
 		onPasteDetected?: () => void;
 	}
-	
-	let { roomId = 'default', onContentChange, isInterviewee = false, onPasteDetected }: Props = $props();
+
+	let {
+		roomId = 'default',
+		onContentChange,
+		isInterviewee = false,
+		onPasteDetected
+	}: Props = $props();
 
 	let element: HTMLDivElement;
 	let editor = $state<Editor | null>(null);
@@ -72,10 +77,10 @@
 	// Function to get only code block content
 	function getCodeContent(): string {
 		if (!editor) return '';
-		
+
 		const doc = editor.state.doc;
 		let codeContent = '';
-		
+
 		doc.descendants((node) => {
 			if (node.type.name === 'codeBlock') {
 				codeContent += node.textContent;
@@ -85,7 +90,7 @@
 			}
 			return true;
 		});
-		
+
 		return codeContent.trim();
 	}
 
@@ -109,7 +114,7 @@
 				const currentEditor = editor;
 				editor = null;
 				editor = currentEditor;
-				
+
 				// Call the content change callback with code content
 				if (onContentChange) {
 					const codeContent = getCodeContent();
@@ -121,7 +126,7 @@
 					// Detect paste events for interviewees
 					if (isInterviewee && onPasteDetected) {
 						const pastedContent = slice.content.textBetween(0, slice.content.size);
-						
+
 						// Only trigger if substantial content is pasted (more than 10 characters)
 						// This helps avoid false positives for small pastes like single words
 						if (pastedContent.trim().length > 10) {
@@ -132,7 +137,7 @@
 							onPasteDetected();
 						}
 					}
-					
+
 					// Return false to allow default paste behavior
 					return false;
 				}
@@ -175,21 +180,21 @@
 
 	$effect(() => {
 		const sessionData = $data.data;
-		
+
 		// Only setup collaboration if we have session data, a roomId, and it's different from current
 		if (!sessionData || !roomId || roomId === currentRoomId || isSettingUpCollaboration) {
 			return;
 		}
-		
+
 		console.log('Setting up collaboration for room:', roomId);
 		isSettingUpCollaboration = true;
-		
+
 		// Clean up existing provider
 		if (provider) {
 			provider.destroy();
 			provider = null;
 		}
-		
+
 		async function setupCollaboration() {
 			try {
 				// Try to generate TipTap token from server
@@ -200,17 +205,17 @@
 					},
 					body: JSON.stringify({ roomId })
 				});
-				
+
 				if (!response.ok) {
 					throw new Error('Failed to get token');
 				}
-				
+
 				const { token } = await response.json();
-				
+
 				if (!token) {
 					throw new Error('No token received');
 				}
-				
+
 				// Create new provider with room-specific name and proper token
 				const newProvider = new TiptapCollabProvider({
 					name: `room-${roomId}`,
@@ -218,7 +223,7 @@
 					token: token,
 					document: doc
 				});
-				
+
 				// Only set provider if we're still working with the same room
 				if (roomId === currentRoomId) {
 					provider = newProvider;
@@ -228,16 +233,19 @@
 					newProvider.destroy();
 				}
 			} catch (error) {
-				console.warn('Failed to set up authenticated collaboration, falling back to basic mode:', error);
-				
+				console.warn(
+					'Failed to set up authenticated collaboration, falling back to basic mode:',
+					error
+				);
+
 				// Fallback: create provider without authentication (for development)
 				const newProvider = new TiptapCollabProvider({
 					name: `room-${roomId}`,
-					appId: 'jkvv46ek', 
+					appId: 'jkvv46ek',
 					token: `fallback-${roomId}-${Date.now()}`, // Use a unique fallback token
 					document: doc
 				});
-				
+
 				// Only set provider if we're still working with the same room
 				if (roomId === currentRoomId) {
 					provider = newProvider;
@@ -250,11 +258,11 @@
 				isSettingUpCollaboration = false;
 			}
 		}
-		
+
 		// Update current room and setup collaboration
 		currentRoomId = roomId;
 		setupCollaboration();
-		
+
 		// Cleanup function
 		return () => {
 			if (provider && currentRoomId === roomId) {
@@ -269,10 +277,6 @@
 	<div class="mb-2 flex items-center gap-1">
 		<!-- Code Block Toggle -->
 		<div class="flex w-full items-center gap-1">
-			<p class="flex grow items-center gap-2 text-sm font-semibold">
-				<PencilIcon size={12} />
-				Code Editor
-			</p>
 			<Toggle
 				pressed={isCodeBlockActive}
 				onclick={() => editor?.chain().focus().toggleCodeBlock().run()}
@@ -340,8 +344,7 @@
 <div
 	bind:this={element}
 	class="prose min-h-64 max-w-none rounded-md border p-4 py-0 dark:prose-invert [&_.ProseMirror]:m-0 [&_.ProseMirror]:border-none [&_.ProseMirror]:p-0 [&_.ProseMirror]:outline-none"
->
-</div>
+></div>
 
 <style lang="postcss">
 	:global(.ProseMirror) {
