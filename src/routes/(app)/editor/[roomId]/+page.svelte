@@ -201,6 +201,7 @@
 	
 	// Voice transcription state (shared with video component)
 	let isTranscriptionEnabled = $state(false);
+	let selectedLanguageId = $state('10'); // Default to Python (10)
 	let selectedProblemForSubmission = $state<any>(null);
 	let selectedTestCase = $state<any>(null);
 	let isExecuting = $state(false);
@@ -211,6 +212,11 @@
 	// Function to handle code content changes from TiptapEditor
 	const handleCodeChange = (code: string) => {
 		currentCode = code;
+	};
+
+	// Function to handle language changes from TiptapEditor
+	const handleLanguageChange = (languageId: string) => {
+		selectedLanguageId = languageId;
 	};
 
 	// Submit code for execution
@@ -237,7 +243,7 @@
 						},
 						body: JSON.stringify({
 							code: currentCode,
-							language_id: '10', // Python 3
+							language_id: selectedLanguageId,
 							input: testCase.input
 						})
 					});
@@ -1075,24 +1081,23 @@
 										{/if}
 									</div>
 									<div class="flex items-center gap-2">
-										{#if isInterviewee}
-											<Button
-												size="sm"
-												variant="outline"
-												class="h-8 px-2 text-xs"
-												onclick={() => (showSubmissionDialog = true)}
-												disabled={!currentCode.trim() || interviewProblems.length === 0}
-											>
-												<PlayIcon size={12} class="mr-1" />
-												Run Tests
-											</Button>
-										{/if}
+										<Button
+											size="sm"
+											variant="outline"
+											class="h-8 px-2 text-xs"
+											onclick={() => (showSubmissionDialog = true)}
+											disabled={!currentCode.trim() || interviewProblems.length === 0}
+										>
+											<PlayIcon size={12} class="mr-1" />
+											Run Tests
+										</Button>
 									</div>
 								</div>
-								<div class="flex-1 p-4">
+								<div class="flex-1 overflow-auto p-4">
 									<TiptapEditor
 										{roomId}
 										onContentChange={handleCodeChange}
+										onLanguageChange={handleLanguageChange}
 										{isInterviewee}
 										onPasteDetected={sendPasteNotification}
 									/>
