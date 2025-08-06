@@ -21,6 +21,7 @@
 	interface Props {
 		roomId?: string;
 		onContentChange?: (content: string) => void;
+		onLanguageChange?: (languageId: string) => void;
 		isInterviewee?: boolean;
 		onPasteDetected?: () => void;
 	}
@@ -28,6 +29,7 @@
 	let {
 		roomId = 'default',
 		onContentChange,
+		onLanguageChange,
 		isInterviewee = false,
 		onPasteDetected
 	}: Props = $props();
@@ -42,30 +44,13 @@
 	const lowlight = createLowlight(common);
 
 	// Language state management
-	let selectedLanguage = $state<string>('plaintext');
+	let selectedLanguage = $state<string>('10');
 
 	// Available languages for syntax highlighting
 	const availableLanguages = [
-		{ value: 'plaintext', label: 'Plain Text' },
-		{ value: 'javascript', label: 'JavaScript' },
-		{ value: 'typescript', label: 'TypeScript' },
-		{ value: 'python', label: 'Python' },
-		{ value: 'html', label: 'HTML' },
-		{ value: 'css', label: 'CSS' },
-		{ value: 'json', label: 'JSON' },
-		{ value: 'markdown', label: 'Markdown' },
-		{ value: 'bash', label: 'Bash' },
-		{ value: 'sql', label: 'SQL' },
-		{ value: 'xml', label: 'XML' },
-		{ value: 'yaml', label: 'YAML' },
-		{ value: 'dockerfile', label: 'Dockerfile' },
-		{ value: 'go', label: 'Go' },
-		{ value: 'rust', label: 'Rust' },
-		{ value: 'java', label: 'Java' },
-		{ value: 'php', label: 'PHP' },
-		{ value: 'ruby', label: 'Ruby' },
-		{ value: 'cpp', label: 'C++' },
-		{ value: 'c', label: 'C' }
+		{ value: '10', label: 'Python' },
+		{ value: '4', label: 'Java' },
+		{ value: '2', label: 'C++' }
 	];
 
 	// Function to get the text content from the editor
@@ -143,6 +128,11 @@
 				}
 			}
 		});
+
+		// Initialize parent with default language
+		if (onLanguageChange) {
+			onLanguageChange(selectedLanguage);
+		}
 	});
 
 	onDestroy(() => {
@@ -165,6 +155,10 @@
 		selectedLanguage = value;
 		if (editor && isCodeBlockActive) {
 			editor.chain().focus().updateAttributes('codeBlock', { language: value }).run();
+		}
+		// Call the parent callback with the selected language ID
+		if (onLanguageChange) {
+			onLanguageChange(value);
 		}
 	}
 
