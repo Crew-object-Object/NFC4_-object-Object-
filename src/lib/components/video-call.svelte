@@ -9,7 +9,8 @@
 		RefreshCw,
 		Shield,
 		Eye,
-		EyeOff
+		EyeOff,
+		MessageSquare
 	} from 'lucide-svelte';
 	import type { ILocalAudioTrack, ILocalVideoTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 	import { toast } from 'svelte-sonner';
@@ -19,13 +20,15 @@
 	import * as Card from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import VoiceSubtitles from '$lib/components/voice-subtitles.svelte';
 	import { PUBLIC_AGORA_APP_ID } from '$env/static/public';
 
 	interface Props {
 		roomId: string;
+		isTranscriptionEnabled?: boolean;
 	}
 
-	let { roomId }: Props = $props();
+	let { roomId, isTranscriptionEnabled = $bindable(false) }: Props = $props();
 
 	const session = useSession();
 	const user = $derived($session.data?.user);
@@ -43,8 +46,8 @@
 	let permissionGranted = $state(false);
 	let checkingPermissions = $state(true);
 	let permissionError = $state<string | null>(null);
-	let video: ILocalVideoTrack | null = null;
-	let audio: ILocalAudioTrack | null = null;
+	let video: ILocalVideoTrack | null = $state(null);
+	let audio: ILocalAudioTrack | null = $state(null);
 	let users: IAgoraRTCRemoteUser[] = $state([]);
 	let remoteUserName: string | null = $state(null);
 	let remoteUserImage: string | null = $state(null);
@@ -1152,6 +1155,16 @@
 							{/if}
 						</Button>
 					{/if}
+
+					<Button
+						size="sm"
+						variant={isTranscriptionEnabled ? 'secondary' : 'outline'}
+						onclick={() => isTranscriptionEnabled = !isTranscriptionEnabled}
+						class="h-8 w-8 rounded-full p-0"
+						title={isTranscriptionEnabled ? 'Disable Subtitles' : 'Enable Subtitles'}
+					>
+						<MessageSquare class="h-4 w-4" />
+					</Button>
 				</div>
 			</div>
 		</div>
@@ -1159,6 +1172,14 @@
 
 	<!-- Hidden canvas for MediaPipe processing -->
 	<canvas bind:this={processingCanvas} class="hidden" width="640" height="480"></canvas>
+
+	<!-- Voice Subtitles Overlay -->
+	<VoiceSubtitles
+		{roomId}
+		localAudioTrack={audio}
+		remoteUsers={users}
+		isEnabled={isTranscriptionEnabled}
+	/>
 </div>
 
 // ...existing code...
@@ -1179,10 +1200,5 @@
 	/* Hidden elements */
 	.hidden {
 		display: none !important;
-	}
-
-	/* Calibration progress bar */
-	.calibration-progress {
-		transition: width 0.3s ease-in-out;
 	}
 </style>

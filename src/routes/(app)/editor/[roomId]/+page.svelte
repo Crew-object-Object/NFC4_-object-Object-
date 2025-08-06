@@ -198,6 +198,9 @@
 
 	// State for code execution
 	let currentCode = $state('');
+	
+	// Voice transcription state (shared with video component)
+	let isTranscriptionEnabled = $state(false);
 	let selectedProblemForSubmission = $state<any>(null);
 	let selectedTestCase = $state<any>(null);
 	let isExecuting = $state(false);
@@ -1265,7 +1268,7 @@
 						<!-- Video Section -->
 						<Pane defaultSize={50} minSize={25}>
 							{#if roomId}
-								<VideoCall {roomId} />
+								<VideoCall {roomId} bind:isTranscriptionEnabled />
 							{/if}
 						</Pane>
 
@@ -1722,7 +1725,7 @@
 				</Sheet.Description>
 			</Sheet.Header>
 			<div class="mt-6">
-				<InterviewerChatbot {currentCode} roomId={roomId!} />
+				<InterviewerChatbot {currentCode} roomId={roomId!} {isTranscriptionEnabled} />
 			</div>
 		</Sheet.Content>
 	</Sheet.Root>

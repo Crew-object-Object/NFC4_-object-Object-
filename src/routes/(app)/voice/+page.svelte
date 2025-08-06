@@ -1,11 +1,16 @@
 <script lang="ts">
-  let transcript = "";
-  let recording = false;
-  let socketStatus = "disconnected";
+  import { Button } from '$lib/components/ui/button';
+  import { Badge } from '$lib/components/ui/badge';
+  import * as Card from '$lib/components/ui/card';
+  import { MessageSquare, Mic } from 'lucide-svelte';
+
+  let transcript = $state("");
+  let recording = $state(false);
+  let socketStatus = $state<"disconnected" | "connecting" | "connected">("disconnected");
   let ws: WebSocket | null = null;
   let audioContext: AudioContext | null = null;
   let mediaStream: MediaStream | null = null;
-  let isServerReady = false;
+  let isServerReady = $state(false);
   let workletNode: AudioWorkletNode | null = null;
   
   const WS_URL = "ws://localhost:9090";
@@ -143,7 +148,7 @@
       
     } catch (error) {
       console.error("Error starting recording:", error);
-      socketStatus = "error";
+      socketStatus = "disconnected";
     }
   }
 
@@ -238,7 +243,7 @@
     };
     
     ws.onerror = (error) => {
-      socketStatus = "error";
+      socketStatus = "disconnected";
       isServerReady = false;
       console.error("WebSocket error:", error);
     };
@@ -255,7 +260,7 @@
       const checkServerReady = () => {
         if (isServerReady) {
           startRecording();
-        } else if (socketStatus === "error") {
+        } else if (socketStatus === "disconnected") {
           console.error("Failed to connect to WebSocket");
         } else {
           setTimeout(checkServerReady, 100);
@@ -267,17 +272,101 @@
   }
 </script>
 
-<style>
-  button { padding: .5rem 1rem; border: none; background:#2563eb; color:#fff; border-radius:6px; cursor:pointer; }
-  .status { font-size:.9rem; margin-top:.5rem; }
-  pre { background:#f5f5f5; padding:1rem; border-radius:4px; overflow:auto; }
-</style>
+<div class="container mx-auto max-w-4xl p-6 space-y-6">
+  <div class="space-y-2">
+    <h1 class="text-3xl font-bold tracking-tight">Voice Transcription Test</h1>
+    <p class="text-muted-foreground">Test the voice transcription system integrated with video calls</p>
+  </div>
 
-<div>
-  <button on:click={toggleRecording}>
-    {recording ? "Stop" : "Start"} mic stream
-  </button>
-  <div class="status">WebSocket: {socketStatus}</div>
-  <div class="status">Transcript: <strong>{transcript}</strong></div>
-  <pre>{JSON.stringify({ socketStatus, transcript }, null, 2)}</pre>
+  <Card.Root>
+    <Card.Header>
+      <Card.Title class="flex items-center gap-2">
+        <MessageSquare class="h-5 w-5" />
+        Real-time Voice Transcription
+      </Card.Title>
+      <Card.Description>
+        This demonstrates the same transcription system used in video interviews, now with subtitle-style display.
+      </Card.Description>
+    </Card.Header>
+    
+    <Card.Content class="space-y-6">
+      <!-- Controls -->
+      <div class="flex items-center gap-4">
+        <Button
+          onclick={toggleRecording}
+          variant={recording ? "destructive" : "default"}
+          class="flex items-center gap-2"
+        >
+          <Mic class="h-4 w-4" />
+          {recording ? "Stop Recording" : "Start Recording"}
+        </Button>
+        
+        <Badge variant={socketStatus === 'connected' ? 'default' : socketStatus === 'connecting' ? 'secondary' : 'outline'}>
+          {socketStatus}
+        </Badge>
+        
+        {#if isServerReady}
+          <Badge variant="default" class="bg-green-500">
+            Server Ready
+          </Badge>
+        {/if}
+      </div>
+
+      <!-- Simulated Video Area with Subtitle Overlay -->
+      <div class="relative">
+        <div class="aspect-video bg-gradient-to-br from-slate-900 to-slate-800 rounded-lg border flex items-center justify-center">
+          <div class="text-center text-white/60">
+            <div class="text-6xl mb-4">🎥</div>
+            <p class="text-lg">Simulated Video Stream</p>
+            <p class="text-sm">Subtitles will appear over this area</p>
+          </div>
+        </div>
+        
+        <!-- Subtitle Overlay (simulating the actual implementation) -->
+        {#if transcript && recording}
+          <div class="absolute top-4 left-1/2 transform -translate-x-1/2 z-30 max-w-[80%]">
+            <div class="bg-black/70 backdrop-blur-sm rounded-lg px-4 py-2 border-l-4 border-yellow-400">
+              <div class="text-xs text-yellow-400 mb-1 font-medium">You</div>
+              <div class="text-sm text-white leading-tight">{transcript}</div>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Technical Info -->
+      <div class="space-y-2 text-sm text-muted-foreground">
+        <h3 class="font-medium text-foreground">How it works in video calls:</h3>
+        <ul class="space-y-1 list-disc list-inside">
+          <li><strong class="text-yellow-500">Yellow subtitles</strong> show your own speech</li>
+          <li><strong class="text-white">White subtitles</strong> show the other participant's speech</li>
+          <li>Simply toggle the subtitle button in video controls to enable/disable</li>
+          <li>Subtitles automatically disappear after 3 seconds of silence</li>
+          <li>Uses the same WhisperLive server (ws://localhost:9090)</li>
+        </ul>
+      </div>
+
+      <!-- Status Info -->
+      <div class="p-4 bg-muted rounded-lg">
+        <h3 class="font-medium mb-2">Current Status:</h3>
+        <div class="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span class="text-muted-foreground">WebSocket:</span>
+            <span class="ml-2 font-medium">{socketStatus}</span>
+          </div>
+          <div>
+            <span class="text-muted-foreground">Recording:</span>
+            <span class="ml-2 font-medium">{recording ? 'Active' : 'Inactive'}</span>
+          </div>
+          <div>
+            <span class="text-muted-foreground">Server Ready:</span>
+            <span class="ml-2 font-medium">{isServerReady ? 'Yes' : 'No'}</span>
+          </div>
+          <div>
+            <span class="text-muted-foreground">Last Text:</span>
+            <span class="ml-2 font-medium">{transcript ? 'Received' : 'None'}</span>
+          </div>
+        </div>
+      </div>
+    </Card.Content>
+  </Card.Root>
 </div>

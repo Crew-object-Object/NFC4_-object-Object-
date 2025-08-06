@@ -6,16 +6,18 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Input } from '$lib/components/ui/input';
-	import { Bot, Send, Zap, Clock, Database } from 'lucide-svelte';
+	import { Bot, Send, Zap, Clock, Database, MessageSquare, History, HelpCircle } from 'lucide-svelte';
 	import { Chat } from '@ai-sdk/svelte';
 	import { marked } from 'marked';
+	import { VoiceTranscriptionService } from '$lib/voice-transcription';
 
 	interface Props {
 		currentCode: string;
 		roomId: string;
+		isTranscriptionEnabled?: boolean;
 	}
 
-	let { currentCode, roomId }: Props = $props();
+	let { currentCode, roomId, isTranscriptionEnabled = false }: Props = $props();
 
 	// Configure marked for better security and rendering
 	marked.setOptions({
@@ -69,8 +71,130 @@
 ${currentCode}
 \`\`\``;
 		
-		console.log('Sending complexity analysis request');
+		console.log('Sending complexity analysis request for room:', roomId);
 		await chat.sendMessage({ text: message });
+	};
+
+	const getTranscript = async () => {
+		// Get transcript directly from localStorage (client-side)
+		try {
+			const transcriptEntries = VoiceTranscriptionService.getTranscriptHistory(roomId);
+			
+			console.log('Retrieved transcript for chatbot:', {
+				roomId,
+				entryCount: transcriptEntries.length
+			});
+
+			if (transcriptEntries.length === 0) {
+				const message = `The current transcript for room "${roomId}" is empty. No conversation has been recorded yet. This could mean:
+
+1. Voice transcription is not enabled
+2. No one has spoken yet
+3. The transcription service is not running
+
+Would you like me to help you get started with the interview, or do you have any questions about the code or problem?`;
+				
+				await chat.sendMessage({ text: message });
+			} else {
+				// Get only the last transcript entry
+				const lastEntry = transcriptEntries[transcriptEntries.length - 1];
+				const time = new Date(lastEntry.timestamp).toLocaleTimeString([], { 
+					hour: '2-digit', 
+					minute: '2-digit',
+					second: '2-digit'
+				});
+				const lastMessage = `[${time}] ${lastEntry.speakerName}: ${lastEntry.text}`;
+
+				const message = `Here is the latest message from the conversation in room "${roomId}":
+
+${lastMessage}
+
+Based on this latest message, I can help you:
+1. Analyze what was just discussed
+2. Generate follow-up questions
+3. Suggest technical challenges
+4. Review code patterns mentioned
+
+What would you like to do next?`;
+
+				await chat.sendMessage({ text: message });
+			}
+		} catch (error) {
+			console.error('Error getting transcript:', error);
+			await chat.sendMessage({ 
+				text: `I encountered an error while retrieving the transcript for room "${roomId}". This might be due to localStorage access issues or the transcript service not being properly initialized.` 
+			});
+		}
+	};
+
+	const generateFollowUps = async () => {
+		// Get transcript directly from localStorage (client-side)
+		try {
+			const transcriptEntries = VoiceTranscriptionService.getTranscriptHistory(roomId);
+			
+			console.log('Generating follow-ups for room:', roomId, {
+				entryCount: transcriptEntries.length,
+				hasCode: currentCode.trim().length > 0
+			});
+
+			if (transcriptEntries.length === 0) {
+				const message = `I don't have any conversation transcript yet for room "${roomId}", so I can't generate specific follow-up questions based on the discussion. 
+
+However, I can suggest some general technical interview questions:
+
+1. **Algorithm Design**: "Can you walk me through your thought process for solving this problem?"
+2. **Complexity Analysis**: "What's the time and space complexity of your solution?"
+3. **Edge Cases**: "What edge cases should we consider for this solution?"
+4. **Optimization**: "How would you optimize this code for better performance?"
+5. **Alternative Approaches**: "Can you think of a different way to solve this problem?"
+
+${currentCode.trim() ? 'I can also analyze the current code if you\'d like me to suggest specific questions about it.' : ''}`;
+				
+				await chat.sendMessage({ text: message });
+			} else {
+				// Get only the last transcript entry
+				const lastEntry = transcriptEntries[transcriptEntries.length - 1];
+				const time = new Date(lastEntry.timestamp).toLocaleTimeString([], { 
+					hour: '2-digit', 
+					minute: '2-digit',
+					second: '2-digit'
+				});
+				const lastMessage = `[${time}] ${lastEntry.speakerName}: ${lastEntry.text}`;
+
+				let message = `Based on the latest message from the conversation:
+
+${lastMessage}
+
+**Suggested Follow-up Questions:**`;
+
+				// Simple analysis to generate relevant questions based on the last message
+				const messageText = lastEntry.text.toLowerCase();
+				
+				if (messageText.includes('algorithm') || messageText.includes('approach')) {
+					message += '\n1. "Can you explain the reasoning behind choosing this approach over alternatives?"';
+				}
+				if (messageText.includes('complexity') || messageText.includes('performance')) {
+					message += '\n2. "How would this solution scale with larger inputs?"';
+				}
+				if (messageText.includes('sort') || messageText.includes('merge') || messageText.includes('quick')) {
+					message += '\n3. "What are the trade-offs between different sorting algorithms in this context?"';
+				}
+				if (currentCode.trim()) {
+					message += '\n4. "Can you trace through your code with a specific example?"';
+					message += '\n5. "What would happen if we modified the input constraints?"';
+				}
+				
+				message += '\n6. "Are there any edge cases we should test?"';
+				message += '\n7. "How would you debug this solution if it wasn\'t working?"';
+
+				await chat.sendMessage({ text: message });
+			}
+		} catch (error) {
+			console.error('Error generating follow-ups:', error);
+			await chat.sendMessage({ 
+				text: `I encountered an error while accessing the transcript to generate follow-up questions. Let me suggest some general technical interview questions instead.` 
+			});
+		}
 	};
 
 	async function handleSubmit(event: SubmitEvent) {
@@ -80,7 +204,7 @@ ${currentCode}
 		const message = input;
 		input = '';
 
-		console.log('Sending chat message:', message);
+		console.log('Sending chat message for room:', roomId, ':', message);
 		await chat.sendMessage({ text: message });
 	}
 
@@ -140,14 +264,45 @@ ${currentCode}
 					Analyzing...
 				{:else}
 					<Zap size={14} />
-					Analyze Code Complexity
+					Analyze Code
 				{/if}
 			</Button>
+			
+			{#if isTranscriptionEnabled}
+				<Button
+					size="sm"
+					variant="outline"
+					class="gap-2"
+					onclick={getTranscript}
+					disabled={isLoading}
+				>
+					<History size={14} />
+					Get Transcript
+				</Button>
+				
+				<Button
+					size="sm"
+					variant="outline"
+					class="gap-2"
+					onclick={generateFollowUps}
+					disabled={isLoading}
+				>
+					<HelpCircle size={14} />
+					Suggest Questions
+				</Button>
+			{/if}
 		</div>
+		
+		{#if isTranscriptionEnabled}
+			<div class="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+				<MessageSquare size={12} />
+				Voice transcription is active - AI has access to conversation history
+			</div>
+		{/if}
 	</div>
 
 	<!-- Chat Messages -->
-	<ScrollArea class="flex-1 p-4">
+	<ScrollArea class="flex-1 p-4 max-h-96">
 		<div class="space-y-4">
 			{#if chat.messages.length === 0}
 				<div class="flex h-96 items-center justify-center">
@@ -161,6 +316,11 @@ ${currentCode}
 						<p class="text-muted-foreground">
 							I can help you analyze code complexity, understand algorithms, and provide insights
 							during the interview.
+							{#if isTranscriptionEnabled}
+								<br><br>
+								<strong>Voice transcription is active!</strong> I have access to the conversation history
+								and can suggest follow-up questions based on what's been discussed.
+							{/if}
 						</p>
 					</div>
 				</div>
@@ -292,6 +452,71 @@ ${currentCode}
 																</Card.Content>
 															</Card.Root>
 														{/if}
+													{/if}
+												{:else if part.type === 'tool-getTranscriptHistory'}
+													<!-- Display transcript history results -->
+													{#if part.state === 'output-available' && part.output}
+														{@const transcriptData = part.output as any}
+														<Card.Root class="mt-2">
+															<Card.Header class="pb-3">
+																<Card.Title class="flex items-center gap-2 text-sm">
+																	<History size={16} />
+																	Conversation Transcript
+																</Card.Title>
+															</Card.Header>
+															<Card.Content class="space-y-4">
+																{#if transcriptData.entryCount > 0}
+																	<div class="grid grid-cols-2 gap-4 text-xs">
+																		<div class="flex items-center justify-between">
+																			<span>Total entries:</span>
+																			<Badge variant="outline">{transcriptData.entryCount}</Badge>
+																		</div>
+																		<div class="flex items-center justify-between">
+																			<span>Room ID:</span>
+																			<Badge variant="outline" class="font-mono">{transcriptData.roomId}</Badge>
+																		</div>
+																	</div>
+																	<div class="max-h-40 overflow-y-auto rounded-md bg-muted p-3">
+																		<pre class="whitespace-pre-wrap text-xs font-mono">{transcriptData.transcript}</pre>
+																	</div>
+																{:else}
+																	<p class="text-sm text-muted-foreground">No conversation transcript available yet.</p>
+																{/if}
+															</Card.Content>
+														</Card.Root>
+													{/if}
+												{:else if part.type === 'tool-generateFollowUpQuestions'}
+													<!-- Display follow-up question suggestions -->
+													{#if part.state === 'output-available' && part.output}
+														{@const questionData = part.output as any}
+														<Card.Root class="mt-2">
+															<Card.Header class="pb-3">
+																<Card.Title class="flex items-center gap-2 text-sm">
+																	<HelpCircle size={16} />
+																	Suggested Follow-up Questions
+																</Card.Title>
+															</Card.Header>
+															<Card.Content class="space-y-4">
+																{#if questionData.suggestions && questionData.suggestions.length > 0}
+																	<div class="text-xs text-muted-foreground mb-2">
+																		Based on {questionData.transcriptLength} transcript entries
+																		{questionData.hasCode ? 'and current code' : ''}
+																	</div>
+																	<div class="space-y-2">
+																		{#each questionData.suggestions as suggestion}
+																			<div class="rounded-md bg-muted p-2 text-sm">
+																				<div class="flex items-start gap-2">
+																					<span class="text-xs text-muted-foreground mt-1">•</span>
+																					<span>{suggestion}</span>
+																				</div>
+																			</div>
+																		{/each}
+																	</div>
+																{:else}
+																	<p class="text-sm text-muted-foreground">No follow-up questions generated yet.</p>
+																{/if}
+															</Card.Content>
+														</Card.Root>
 													{/if}
 												{/if}
 											{/each}
